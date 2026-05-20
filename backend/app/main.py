@@ -79,7 +79,7 @@ def debug_users(db: Session = Depends(get_db)) -> dict:
     }
 
 
-@app.post("/api/debug/create-root-admin")
+@app.get("/api/debug/create-root-admin")
 def debug_create_root_admin(db: Session = Depends(get_db)) -> dict:
     """Manually trigger root admin creation from ENV vars."""
     from app.models import User
