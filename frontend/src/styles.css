@@ -220,6 +220,27 @@ button:disabled {
   position: relative;
 }
 
+.login-shell {
+  border: 1px solid rgba(214, 225, 235, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(22px);
+}
+
+.login-info {
+  border: 1px solid #d7ebf8;
+  background: linear-gradient(180deg, rgba(240, 249, 255, 0.95), rgba(232, 245, 253, 0.85));
+}
+
+.login-preview-card {
+  border: 1px solid rgba(224, 232, 240, 0.92);
+  border-radius: 1.75rem;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 1rem;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(12px);
+}
+
 .login-preview-cover {
   height: 9rem;
   border-radius: 1.25rem;
@@ -242,6 +263,25 @@ button:disabled {
   .portal-list-row {
     grid-template-columns: 10rem minmax(0, 1fr) auto;
     padding: 1.5rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  .login-shell {
+    max-width: 34rem;
+    margin-inline: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-shell {
+    padding: 1.35rem;
+    border-radius: 1.5rem;
+  }
+
+  .login-info {
+    font-size: 0.92rem;
+    line-height: 1.55;
   }
 }
 

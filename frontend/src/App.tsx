@@ -415,7 +415,7 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
     <div className="relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(8,47,73,0.18),_transparent_28%)]" />
       <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_440px]">
-        <section className="hidden lg:block">
+        <section className="hidden lg:block lg:pr-8">
           <p className="portal-eyebrow">Klinikportal</p>
           <h1 className="mt-4 max-w-2xl text-6xl font-black leading-[1.02] text-slate-950">Fachwissen, das sich wie eine moderne Bibliothek anfühlt.</h1>
           <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">Volltextsuche, Merklisten und kuratierter Zugriff auf medizinische Literatur – in einer Oberfläche, die eher nach Fachportal als nach Verwaltungsmaske aussieht.</p>
@@ -425,7 +425,7 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
               ['Bücher', 'Lehrbücher und Standardwerke'],
               ['OCR-Suche', 'Kapitel und Inhalte sekundenschnell finden']
             ].map(([title, description], index) => (
-              <div key={title} className="rounded-[1.75rem] border border-white/70 bg-white/75 p-4 shadow-lg backdrop-blur">
+              <div key={title} className="login-preview-card">
                 <div className={`login-preview-cover login-preview-${index + 1}`} />
                 <h3 className="mt-4 text-lg font-black text-slate-950">{title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
@@ -434,7 +434,7 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
           </div>
         </section>
 
-        <section className="login-card mx-auto w-full max-w-[28rem] rounded-[2rem] border border-white/80 bg-white/88 p-7 shadow-portal backdrop-blur-xl sm:p-9">
+        <section className="login-card login-shell mx-auto w-full max-w-[30rem] justify-self-center rounded-[2rem] p-7 sm:p-9">
           <div className="mb-8 flex items-center gap-4">
             <div className="rounded-[1.25rem] bg-gradient-to-br from-clinic-950 to-clinic-500 p-3 text-white shadow-lg shadow-sky-900/20"><ShieldCheck className="h-6 w-6" /></div>
             <div>
@@ -443,7 +443,7 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
             </div>
           </div>
 
-          <div className="mb-6 rounded-[1.25rem] border border-sky-100 bg-sky-50/70 p-4 text-sm leading-6 text-sky-900">
+          <div className="login-info mb-6 rounded-[1.25rem] p-4 text-sm leading-6 text-sky-900">
             Zugriff auf die digitale Klinikbibliothek mit persönlicher Merkliste, Journals und Volltextsuche.
           </div>
 
