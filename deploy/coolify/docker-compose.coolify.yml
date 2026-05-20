@@ -5,29 +5,29 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-medlib}
       POSTGRES_USER: ${POSTGRES_USER:-medlib}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medlibsecret}
     volumes:
       - medlib-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medlib} -d ${POSTGRES_DB:-medlib}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
 
   backend:
     build:
       context: ./backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-medlib}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-medlib}
-      SECRET_KEY: ${SECRET_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-medlib}:${POSTGRES_PASSWORD:-medlibsecret}@db:5432/${POSTGRES_DB:-medlib}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8080"]}
       OCR_LANGUAGE: ${OCR_LANGUAGE:-deu+eng}
       STORAGE_DIR: /data/books
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-2048}
-      ROOT_ADMIN_EMAIL: ${ROOT_ADMIN_EMAIL}
-      ROOT_ADMIN_PASSWORD: ${ROOT_ADMIN_PASSWORD}
+      ROOT_ADMIN_EMAIL: ${ROOT_ADMIN_EMAIL:-}
+      ROOT_ADMIN_PASSWORD: ${ROOT_ADMIN_PASSWORD:-}
       ROOT_ADMIN_FULL_NAME: ${ROOT_ADMIN_FULL_NAME:-Root Administrator}
       ROOT_ADMIN_UPDATE_PASSWORD: ${ROOT_ADMIN_UPDATE_PASSWORD:-false}
     volumes:
@@ -36,12 +36,13 @@ services:
       - "8000"
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
-      interval: 20s
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   frontend:
     build:
@@ -51,12 +52,13 @@ services:
       - "80"
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
-      interval: 20s
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
 volumes:
   medlib-postgres-data:
