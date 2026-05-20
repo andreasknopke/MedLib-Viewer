@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   Activity,
   BookOpen,
@@ -18,6 +18,7 @@ import {
   Users,
 } from 'lucide-react'
 import { api } from './api'
+import type { InspectMetadata, InspectResponse } from './api'
 import type {
   Book,
   Bookmark,
@@ -802,54 +803,362 @@ function Stats({ books }: { books: Book[] }) {
 }
 
 function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false)
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setBusy(true)
+  const [file, setFile] = useState<File | null>(null)
+  const [inspecting, setInspecting] = useState(false)
+  const [inspection, setInspection] = useState<InspectResponse | null>(null)
+  const [draft, setDraft] = useState<DraftMetadata>(emptyDraft())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+
+  function reset() {
+    if (inspection) {
+      void api.discardInspection(inspection.temp_id).catch(() => undefined)
+    }
+    setFile(null)
+    setInspection(null)
+    setDraft(emptyDraft())
+    setError('')
+    setInfo('')
+  }
+
+  async function inspect() {
+    if (!file) return
+    setError('')
+    setInfo('')
+    setInspecting(true)
     try {
-      await api.uploadBook(new FormData(event.currentTarget))
-      event.currentTarget.reset()
-      await onUploaded()
+      const result = await api.inspectBook(file)
+      setInspection(result)
+      if (result.best) {
+        applyCandidate(result.best)
+        setInfo(
+          result.best.source === 'googlebooks'
+            ? 'Treffer bei Google Books gefunden – bitte prüfen.'
+            : 'Treffer bei OpenLibrary gefunden – bitte prüfen.',
+        )
+      } else {
+        setInfo(
+          result.detected_isbn
+            ? `ISBN ${result.detected_isbn} erkannt, aber kein Online-Treffer. Bitte manuell ergänzen.`
+            : 'Keine Daten gefunden – bitte manuell ergänzen.',
+        )
+      }
+    } catch (inspectError) {
+      setError(inspectError instanceof Error ? inspectError.message : 'Cover-Analyse fehlgeschlagen')
     } finally {
-      setBusy(false)
+      setInspecting(false)
     }
   }
+
+  function applyCandidate(candidate: InspectMetadata) {
+    setDraft((current) => ({
+      ...current,
+      title: candidate.title ?? current.title,
+      subtitle: candidate.subtitle ?? current.subtitle,
+      authors: candidate.authors ?? current.authors,
+      publisher: candidate.publisher ?? current.publisher,
+      isbn: candidate.isbn ?? current.isbn,
+      year: candidate.year != null ? String(candidate.year) : current.year,
+      description: candidate.description ?? current.description,
+      language: candidate.language ?? current.language,
+    }))
+  }
+
+  async function commit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!inspection) return
+    if (!draft.title.trim()) {
+      setError('Titel ist erforderlich')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      await api.commitInspectedBook({
+        temp_id: inspection.temp_id,
+        title: draft.title.trim(),
+        subtitle: draft.subtitle.trim() || null,
+        authors: draft.authors.trim() || null,
+        publisher: draft.publisher.trim() || null,
+        isbn: draft.isbn.trim() || null,
+        year: draft.year ? Number.parseInt(draft.year, 10) || null : null,
+        edition: draft.edition.trim() || null,
+        specialty: draft.specialty.trim() || null,
+        media_type: draft.media_type,
+        language: (draft.language || 'de').slice(0, 8),
+        tags: draft.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        description: draft.description.trim() || null,
+      })
+      await onUploaded()
+      reset()
+      setInfo('Buch wurde übernommen und OCR-Job gestartet.')
+    } catch (commitError) {
+      setError(commitError instanceof Error ? commitError.message : 'Speichern fehlgeschlagen')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <section className="card">
       <div className="card-header">
         <h3 className="card-title flex items-center gap-2">
           <FileUp className="h-4 w-4 text-indigo-600" /> Neues Medium
         </h3>
-        <p className="card-description">Datei wird hochgeladen und der OCR-Job gestartet</p>
+        <p className="card-description">
+          Cover wird per OCR gelesen und automatisch online (OpenLibrary, Google Books) recherchiert.
+        </p>
       </div>
-      <form className="card-body space-y-2.5 pt-3" onSubmit={submit}>
-        <input name="title" required className="form-control" placeholder="Titel" />
-        <div className="grid grid-cols-2 gap-2">
-          <input name="authors" className="form-control" placeholder="Autor:innen" />
-          <input name="publisher" className="form-control" placeholder="Verlag" />
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <select name="media_type" className="form-control" defaultValue="book">
-            <option value="book">Buch</option>
-            <option value="journal">Zeitschrift</option>
-          </select>
-          <input name="year" type="number" className="form-control" placeholder="Jahr" />
-          <input name="specialty" className="form-control" placeholder="Fachgebiet" />
-        </div>
-        <input name="tags" className="form-control" placeholder="Tags, kommagetrennt" />
-        <input
-          name="file"
-          type="file"
-          accept="application/pdf"
-          required
-          className="form-control bg-slate-50 text-xs"
-        />
-        <button disabled={busy} className="btn btn-primary w-full">
-          {busy ? 'OCR wird vorbereitet …' : 'Hochladen & OCR starten'}
-        </button>
-      </form>
+      <div className="card-body space-y-3 pt-3">
+        {!inspection && (
+          <div className="space-y-2.5">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(event) => {
+                setFile(event.target.files?.[0] ?? null)
+                setError('')
+                setInfo('')
+              }}
+              className="form-control bg-slate-50 text-xs"
+            />
+            <button
+              type="button"
+              className="btn btn-primary w-full"
+              disabled={!file || inspecting}
+              onClick={() => void inspect()}
+            >
+              {inspecting ? 'Analysiere Cover & recherchiere …' : 'Cover analysieren'}
+            </button>
+            {file && !inspecting && (
+              <p className="text-[11px] text-slate-500">
+                Datei: <span className="font-medium text-slate-700">{file.name}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        {inspection && (
+          <form className="space-y-3" onSubmit={commit}>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-700">{inspection.filename}</span>
+                <button
+                  type="button"
+                  className="text-indigo-700 hover:text-indigo-800"
+                  onClick={reset}
+                >
+                  Anderes PDF wählen
+                </button>
+              </div>
+              {inspection.detected_isbn && (
+                <p className="mt-1">
+                  ISBN erkannt: <span className="font-medium text-slate-700">{inspection.detected_isbn}</span>
+                </p>
+              )}
+              {inspection.suggested_query && !inspection.detected_isbn && (
+                <p className="mt-1">
+                  Suchbegriff:{' '}
+                  <span className="font-medium text-slate-700">{inspection.suggested_query}</span>
+                </p>
+              )}
+            </div>
+
+            {inspection.candidates.length > 1 && (
+              <div>
+                <p className="eyebrow mb-1.5">Treffer</p>
+                <div className="space-y-1.5">
+                  {inspection.candidates.map((candidate, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => applyCandidate(candidate)}
+                      className="flex w-full items-start justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left text-xs hover:border-indigo-300 hover:bg-indigo-50/40"
+                    >
+                      <span className="min-w-0">
+                        <span className="line-clamp-1 font-medium text-slate-900">
+                          {candidate.title || 'Ohne Titel'}
+                        </span>
+                        <span className="line-clamp-1 text-slate-500">
+                          {[candidate.authors, candidate.publisher, candidate.year].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      <span className="badge badge-slate shrink-0">{candidate.source}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="sm:col-span-2">
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Titel *</span>
+                <input
+                  className="form-control"
+                  value={draft.title}
+                  onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                  required
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Untertitel</span>
+                <input
+                  className="form-control"
+                  value={draft.subtitle}
+                  onChange={(event) => setDraft({ ...draft, subtitle: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Autor:innen</span>
+                <input
+                  className="form-control"
+                  value={draft.authors}
+                  onChange={(event) => setDraft({ ...draft, authors: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Verlag</span>
+                <input
+                  className="form-control"
+                  value={draft.publisher}
+                  onChange={(event) => setDraft({ ...draft, publisher: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">ISBN</span>
+                <input
+                  className="form-control"
+                  value={draft.isbn}
+                  onChange={(event) => setDraft({ ...draft, isbn: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Jahr</span>
+                <input
+                  className="form-control"
+                  type="number"
+                  value={draft.year}
+                  onChange={(event) => setDraft({ ...draft, year: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Auflage</span>
+                <input
+                  className="form-control"
+                  value={draft.edition}
+                  onChange={(event) => setDraft({ ...draft, edition: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Fachgebiet</span>
+                <input
+                  className="form-control"
+                  value={draft.specialty}
+                  onChange={(event) => setDraft({ ...draft, specialty: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Typ</span>
+                <select
+                  className="form-control"
+                  value={draft.media_type}
+                  onChange={(event) =>
+                    setDraft({ ...draft, media_type: event.target.value as 'book' | 'journal' })
+                  }
+                >
+                  <option value="book">Buch</option>
+                  <option value="journal">Zeitschrift</option>
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Sprache</span>
+                <input
+                  className="form-control"
+                  value={draft.language}
+                  onChange={(event) => setDraft({ ...draft, language: event.target.value })}
+                />
+              </label>
+              <label className="sm:col-span-2">
+                <span className="mb-1 block text-[11px] font-medium text-slate-600">Tags (kommagetrennt)</span>
+                <input
+                  className="form-control"
+                  value={draft.tags}
+                  onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
+                />
+              </label>
+            </div>
+
+            {error && (
+              <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-700">
+                {error}
+              </p>
+            )}
+            {info && !error && (
+              <p className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700">
+                {info}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button type="button" className="btn btn-secondary flex-1" onClick={reset} disabled={saving}>
+                Abbrechen
+              </button>
+              <button type="submit" className="btn btn-primary flex-1" disabled={saving}>
+                {saving ? 'Speichere …' : 'Übernehmen & OCR starten'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {error && !inspection && (
+          <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-700">
+            {error}
+          </p>
+        )}
+        {info && !inspection && (
+          <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">
+            {info}
+          </p>
+        )}
+      </div>
     </section>
   )
+}
+
+interface DraftMetadata {
+  title: string
+  subtitle: string
+  authors: string
+  publisher: string
+  isbn: string
+  year: string
+  edition: string
+  specialty: string
+  media_type: 'book' | 'journal'
+  language: string
+  tags: string
+  description: string
+}
+
+function emptyDraft(): DraftMetadata {
+  return {
+    title: '',
+    subtitle: '',
+    authors: '',
+    publisher: '',
+    isbn: '',
+    year: '',
+    edition: '',
+    specialty: '',
+    media_type: 'book',
+    language: 'de',
+    tags: '',
+    description: '',
+  }
 }
 
 function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => Promise<void> }) {

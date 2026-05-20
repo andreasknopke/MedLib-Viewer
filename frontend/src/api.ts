@@ -2,6 +2,45 @@ import type { Book, Bookmark, Category, Clinic, DashboardOverview, Department, H
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
+export interface InspectMetadata {
+  source?: string | null
+  title?: string | null
+  subtitle?: string | null
+  authors?: string | null
+  publisher?: string | null
+  isbn?: string | null
+  year?: number | null
+  description?: string | null
+  language?: string | null
+}
+
+export interface InspectResponse {
+  temp_id: string
+  filename: string
+  cover_text: string
+  detected_isbn?: string | null
+  suggested_query?: string | null
+  best?: InspectMetadata | null
+  candidates: InspectMetadata[]
+}
+
+export interface CommitBookPayload {
+  temp_id: string
+  title: string
+  subtitle?: string | null
+  authors?: string | null
+  publisher?: string | null
+  isbn?: string | null
+  year?: number | null
+  edition?: string | null
+  specialty?: string | null
+  media_type?: 'book' | 'journal'
+  language?: string
+  tags?: string[]
+  description?: string | null
+  is_downloadable?: boolean
+}
+
 export class ApiClient {
   token = localStorage.getItem('medlib.token') ?? ''
 
@@ -200,6 +239,24 @@ export class ApiClient {
 
   uploadBook(formData: FormData) {
     return this.request<Book>('/api/books', { method: 'POST', body: formData })
+  }
+
+  inspectBook(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return this.request<InspectResponse>('/api/books/inspect', { method: 'POST', body: formData })
+  }
+
+  commitInspectedBook(payload: CommitBookPayload) {
+    return this.request<Book>('/api/books/from-inspection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+  }
+
+  discardInspection(tempId: string) {
+    return this.request<void>(`/api/books/inspect/${tempId}`, { method: 'DELETE' })
   }
 
   async downloadBook(book: Book) {
