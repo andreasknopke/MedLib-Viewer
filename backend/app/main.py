@@ -31,17 +31,23 @@ def startup() -> None:
     from alembic import command as alembic_command
 
     log = logging.getLogger("medlib.startup")
+
+    # 1) Ensure all tables exist (idempotent – safe to run every time)
+    from app.database import Base, engine
+    log.info("Ensuring database tables exist …")
+    Base.metadata.create_all(bind=engine)
+    log.info("Database tables ready.")
+
+    # 2) Stamp Alembic to the current head so future migrations work
     try:
         alembic_cfg = AlembicConfig("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        log.info("Running Alembic upgrade to head …")
-        alembic_command.upgrade(alembic_cfg, "head")
-        log.info("Alembic upgrade completed.")
+        alembic_command.stamp(alembic_cfg, "head")
+        log.info("Alembic stamped to head.")
     except Exception:
-        log.exception("Alembic migration failed – falling back to create_all")
-        from app.database import Base, engine
-        Base.metadata.create_all(bind=engine)
+        log.warning("Alembic stamp failed (non-fatal)", exc_info=True)
 
+    # 3) Create root admin if configured
     try:
         ensure_root_admin()
         log.info("Root admin check completed.")
