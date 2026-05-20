@@ -53,35 +53,40 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+    <div className="min-h-screen text-slate-900">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-3 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-clinic-700 p-3 text-white shadow-lg shadow-sky-900/20">
+            <div className="rounded-2xl bg-gradient-to-br from-clinic-950 to-clinic-500 p-3 text-white shadow-lg shadow-sky-900/20">
               <Library className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.35em] text-clinic-700">Klinikportal</p>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-950">MedLib Fachbibliothek</h1>
+              <p className="portal-eyebrow">Klinikportal</p>
+              <h1 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">MedLib Fachbibliothek</h1>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-sm text-slate-600">
-            <span className="rounded-full bg-slate-100 px-3 py-1">{user.full_name} · {user.role}</span>
-            <button className="flex items-center gap-2 rounded-full border px-3 py-2 hover:bg-slate-100" onClick={() => { api.logout(); setUser(null) }}>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="hidden rounded-full bg-clinic-50 px-4 py-2 font-semibold text-clinic-950 sm:inline-flex">{user.full_name} · {user.role}</span>
+            <button className="btn-secondary flex items-center gap-2" onClick={() => { api.logout(); setUser(null) }}>
               <LogOut className="h-4 w-4" /> Logout
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[360px_1fr]">
-        <aside className="space-y-6">
-          <section className="rounded-3xl bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-6 text-white shadow-portal">
+      <main className="mx-auto grid max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
+        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-6 text-white shadow-portal">
             <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.25em] text-sky-100">
               <Sparkles className="h-4 w-4" /> OCR-Archiv
             </div>
-            <h2 className="mt-4 text-3xl font-bold leading-tight">Fachbücher lesen, durchsuchen, annotieren.</h2>
-            <p className="mt-3 text-sm leading-6 text-sky-100">An Thieme-/Elsevier-Portalen angelehnte Oberfläche mit Klinik-Login, Volltextsuche und persönlichem Wissensarbeitsplatz.</p>
+            <h2 className="mt-4 text-3xl font-black leading-tight">Fachwissen für Klinikteams.</h2>
+            <p className="mt-3 text-sm leading-6 text-sky-100">Portalartige Oberfläche für Fachbücher, Journals, Volltextsuche, Annotationen und persönliche Sammlungen.</p>
+            <div className="mt-6 grid grid-cols-3 gap-2 text-center text-xs font-semibold text-sky-50">
+              <span className="rounded-2xl bg-white/10 px-3 py-2">OCR</span>
+              <span className="rounded-2xl bg-white/10 px-3 py-2">Notizen</span>
+              <span className="rounded-2xl bg-white/10 px-3 py-2">Klinikstruktur</span>
+            </div>
           </section>
 
           {(user.role === 'admin' || user.role === 'librarian') && <UploadPanel onUploaded={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />}
@@ -92,21 +97,33 @@ function App() {
         </aside>
 
         <section className="space-y-6">
-          <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex gap-3">
+          <section className="portal-card overflow-hidden p-6 md:p-8">
+            <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
+              <div>
+                <p className="portal-eyebrow">Digitale Bibliothek</p>
+                <h2 className="mt-2 max-w-3xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Suchen, lesen und relevante Fachliteratur sammeln.</h2>
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">Medienbestand mit Cover-Karten, OCR-Treffern, Lesezeichen und persönlichen Notizen – optimiert für den Klinikalltag.</p>
+              </div>
+              <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-xl">
+                <p className="text-xs uppercase tracking-[0.25em] text-sky-200">Bestand</p>
+                <p className="mt-3 text-4xl font-black">{books.length}</p>
+                <p className="text-sm text-slate-300">Bücher & Zeitschriften</p>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-col gap-3 rounded-[1.5rem] bg-slate-100/80 p-2 sm:flex-row">
               <div className="relative flex-1">
-                <Search className="absolute left-4 top-3.5 h-5 w-5 text-slate-400" />
+                <Search className="absolute left-4 top-3.5 h-5 w-5 text-clinic-700" />
                 <input
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 outline-none ring-clinic-500 focus:ring-2"
+                  className="form-control border-transparent bg-white py-3.5 pl-12"
                   placeholder="Diagnose, Kapitel, Autor, ISBN oder Therapie suchen …"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   onKeyDown={(event) => event.key === 'Enter' && runSearch()}
                 />
               </div>
-              <button className="rounded-2xl bg-clinic-700 px-6 font-semibold text-white hover:bg-clinic-950" onClick={runSearch}>Suchen</button>
+              <button className="btn-primary sm:min-w-36" onClick={runSearch}>Suchen</button>
             </div>
-          </div>
+          </section>
 
           <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
           <WorkspacePanel workspace={workspace} onSelectBook={(book) => setSelectedBook(book)} />
@@ -125,14 +142,14 @@ function App() {
 function WorkspacePanel({ workspace, onSelectBook }: { workspace: UserWorkspace | null; onSelectBook: (book: Book) => void }) {
   if (!workspace) return null
   return (
-    <section className="grid gap-4 rounded-3xl border bg-white p-6 shadow-sm xl:grid-cols-3">
+    <section className="portal-card grid gap-4 p-6 xl:grid-cols-3">
       <div>
         <div className="mb-3 flex items-center gap-2"><Star className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Meine Sammlung</h3></div>
         <div className="space-y-2">
           {workspace.saved_media.slice(0, 6).map((entry) => (
-            <button key={entry.id} className="block w-full rounded-2xl bg-slate-50 p-3 text-left text-sm hover:bg-slate-100" onClick={() => onSelectBook(entry.book)}>
-              <span className="font-semibold text-slate-900">{entry.book.title}</span>
-              <span className="block text-slate-500">{entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span>
+            <button key={entry.id} className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 p-3 text-left text-sm hover:bg-slate-100" onClick={() => onSelectBook(entry.book)}>
+              <BookCover book={entry.book} compact />
+              <span><span className="line-clamp-2 font-bold text-slate-900">{entry.book.title}</span><span className="block text-slate-500">{entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span></span>
             </button>
           ))}
           {!workspace.saved_media.length && <p className="text-sm text-slate-500">Noch keine ausgewählten Medien.</p>}
@@ -190,17 +207,17 @@ function DashboardPanel({ dashboard, onRefresh }: { dashboard: DashboardOverview
   }
 
   if (!dashboard) {
-    return <section className="rounded-3xl border bg-white p-6 shadow-sm"><p className="text-sm text-slate-500">Dashboard wird geladen …</p></section>
+    return <section className="portal-card p-6"><p className="text-sm text-slate-500">Dashboard wird geladen …</p></section>
   }
 
   return (
-    <section className="space-y-6 rounded-3xl border bg-white p-6 shadow-sm">
+    <section className="portal-card space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-clinic-700">Operations</p>
           <h2 className="text-2xl font-bold text-slate-950">Dashboard</h2>
         </div>
-        <button className="rounded-2xl border px-4 py-2 text-sm font-semibold text-clinic-700" onClick={refresh}>{refreshing ? 'Aktualisiere …' : 'Aktualisieren'}</button>
+        <button className="btn-secondary" onClick={refresh}>{refreshing ? 'Aktualisiere …' : 'Aktualisieren'}</button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -308,18 +325,34 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top_left,#bae6fd,transparent_36%),linear-gradient(135deg,#f8fafc,#e0f2fe)] px-6">
-      <div className="w-full max-w-md rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-portal backdrop-blur">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="rounded-2xl bg-clinic-700 p-3 text-white"><ShieldCheck /></div>
-          <div><p className="text-sm uppercase tracking-[0.25em] text-clinic-700">MedLib</p><h1 className="text-2xl font-bold">Klinik-Login</h1></div>
-        </div>
-        <label className="text-sm font-semibold text-slate-600">E-Mail</label>
-        <input className="mb-4 mt-2 w-full rounded-2xl border p-3" value={email} onChange={(event) => setEmail(event.target.value)} />
-        <label className="text-sm font-semibold text-slate-600">Passwort</label>
-        <input className="mb-6 mt-2 w-full rounded-2xl border p-3" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submit()} />
-        {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        <button className="w-full rounded-2xl bg-clinic-700 py-3 font-semibold text-white hover:bg-clinic-950" onClick={submit}>Einloggen</button>
+    <div className="grid min-h-screen place-items-center px-5 py-10">
+      <div className="grid w-full max-w-5xl overflow-hidden rounded-[2.25rem] border border-white/80 bg-white shadow-portal lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="relative hidden min-h-[620px] overflow-hidden bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-10 text-white lg:block">
+          <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
+          <div className="relative z-10 flex h-full flex-col justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.35em] text-sky-100">Klinikportal</p>
+              <h1 className="mt-5 text-5xl font-black leading-tight">MedLib Fachbibliothek</h1>
+              <p className="mt-5 max-w-md text-sm leading-7 text-sky-50">Fachbücher, Journals und OCR-Volltextsuche in einer geschützten Klinikoberfläche.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              {['Volltextsuche', 'Persönliche Sammlung', 'Bookmarks & Notizen', 'Klinik-Struktur'].map((item) => <span key={item} className="rounded-2xl bg-white/12 px-4 py-3 font-semibold backdrop-blur">{item}</span>)}
+            </div>
+          </div>
+        </section>
+        <section className="mx-auto w-full max-w-md p-7 sm:p-10 lg:p-12">
+          <div className="mb-10 flex items-center gap-3">
+            <div className="rounded-2xl bg-clinic-700 p-3 text-white shadow-lg shadow-sky-900/20"><ShieldCheck /></div>
+            <div><p className="portal-eyebrow">MedLib</p><h2 className="text-3xl font-black tracking-tight">Anmelden</h2></div>
+          </div>
+          <label className="text-sm font-bold text-slate-600">E-Mail</label>
+          <input className="form-control mb-4 mt-2" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+          <label className="text-sm font-bold text-slate-600">Passwort</label>
+          <input className="form-control mb-6 mt-2" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submit()} autoComplete="current-password" />
+          {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+          <button className="btn-primary w-full py-3.5" onClick={submit}>Einloggen</button>
+          <p className="mt-5 text-center text-xs leading-5 text-slate-500">Zugang nur für berechtigte Nutzer:innen der Klinikbibliothek.</p>
+        </section>
       </div>
     </div>
   )
@@ -329,7 +362,7 @@ function Stats({ books }: { books: Book[] }) {
   const pageCount = books.reduce((sum, book) => sum + book.page_count, 0)
   const specialties = new Set(books.map((book) => book.specialty).filter(Boolean)).size
   return (
-    <div className="grid grid-cols-3 gap-3 rounded-3xl border bg-white p-4 shadow-sm">
+    <div className="portal-panel grid grid-cols-3 gap-3">
       {[['Bücher', books.length], ['Seiten', pageCount], ['Fächer', specialties]].map(([label, value]) => (
         <div key={label} className="rounded-2xl bg-slate-50 p-4 text-center"><p className="text-2xl font-bold text-slate-950">{value}</p><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p></div>
       ))}
@@ -351,16 +384,16 @@ function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
     }
   }
   return (
-    <form className="space-y-3 rounded-3xl border bg-white p-5 shadow-sm" onSubmit={submit}>
+    <form className="portal-panel space-y-3" onSubmit={submit}>
       <h3 className="flex items-center gap-2 font-bold"><FileUp className="h-5 w-5 text-clinic-700" /> Neues Fachbuch</h3>
-      <input name="title" required className="w-full rounded-xl border p-3" placeholder="Titel" />
-      <input name="authors" className="w-full rounded-xl border p-3" placeholder="Autor:innen" />
-      <input name="publisher" className="w-full rounded-xl border p-3" placeholder="Verlag" />
-      <select name="media_type" className="w-full rounded-xl border p-3" defaultValue="book"><option value="book">Buch</option><option value="journal">Zeitschrift</option></select>
-      <div className="grid grid-cols-2 gap-2"><input name="year" type="number" className="rounded-xl border p-3" placeholder="Jahr" /><input name="specialty" className="rounded-xl border p-3" placeholder="Fachgebiet" /></div>
-      <input name="tags" className="w-full rounded-xl border p-3" placeholder="Tags, kommagetrennt" />
-      <input name="file" type="file" accept="application/pdf" required className="w-full rounded-xl border bg-slate-50 p-3 text-sm" />
-      <button disabled={busy} className="w-full rounded-xl bg-clinic-700 py-3 font-semibold text-white disabled:opacity-50">{busy ? 'OCR wird vorbereitet …' : 'Hochladen & OCR starten'}</button>
+      <input name="title" required className="form-control" placeholder="Titel" />
+      <input name="authors" className="form-control" placeholder="Autor:innen" />
+      <input name="publisher" className="form-control" placeholder="Verlag" />
+      <select name="media_type" className="form-control" defaultValue="book"><option value="book">Buch</option><option value="journal">Zeitschrift</option></select>
+      <div className="grid grid-cols-2 gap-2"><input name="year" type="number" className="form-control" placeholder="Jahr" /><input name="specialty" className="form-control" placeholder="Fachgebiet" /></div>
+      <input name="tags" className="form-control" placeholder="Tags, kommagetrennt" />
+      <input name="file" type="file" accept="application/pdf" required className="form-control bg-slate-50 text-sm" />
+      <button disabled={busy} className="btn-primary w-full">{busy ? 'OCR wird vorbereitet …' : 'Hochladen & OCR starten'}</button>
     </form>
   )
 }
@@ -421,20 +454,20 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
   }
 
   return (
-    <section className="space-y-4 rounded-3xl border bg-white p-5 shadow-sm">
+    <section className="portal-panel space-y-4">
       <div className="flex items-center gap-2"><FolderTree className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Struktur & Einsortierung</h3></div>
       <div className="space-y-2">
-        <div className="flex gap-2"><input className="min-w-0 flex-1 rounded-xl border p-3" placeholder="Klinik" value={clinicName} onChange={(event) => setClinicName(event.target.value)} /><button className="rounded-xl border px-3 font-semibold" onClick={addClinic}>+</button></div>
-        <select className="w-full rounded-xl border p-3" value={selectedClinic} onChange={(event) => { setSelectedClinic(event.target.value); setSelectedDepartment(''); setSelectedCategory('') }}><option value="">Klinik wählen</option>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select>
-        <div className="flex gap-2"><input className="min-w-0 flex-1 rounded-xl border p-3" placeholder="Fachbereich" value={departmentName} onChange={(event) => setDepartmentName(event.target.value)} /><button className="rounded-xl border px-3 font-semibold" onClick={addDepartment}>+</button></div>
-        <select className="w-full rounded-xl border p-3" value={selectedDepartment} onChange={(event) => { setSelectedDepartment(event.target.value); setSelectedCategory('') }}><option value="">Fachbereich wählen</option>{filteredDepartments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
-        <div className="flex gap-2"><input className="min-w-0 flex-1 rounded-xl border p-3" placeholder="Kategorie" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} /><button className="rounded-xl border px-3 font-semibold" onClick={addCategory}>+</button></div>
-        <select className="w-full rounded-xl border p-3" value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)}><option value="">Kategorie optional</option>{filteredCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+        <div className="flex gap-2"><input className="form-control min-w-0 flex-1" placeholder="Klinik" value={clinicName} onChange={(event) => setClinicName(event.target.value)} /><button className="btn-secondary px-4" onClick={addClinic}>+</button></div>
+        <select className="form-control" value={selectedClinic} onChange={(event) => { setSelectedClinic(event.target.value); setSelectedDepartment(''); setSelectedCategory('') }}><option value="">Klinik wählen</option>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select>
+        <div className="flex gap-2"><input className="form-control min-w-0 flex-1" placeholder="Fachbereich" value={departmentName} onChange={(event) => setDepartmentName(event.target.value)} /><button className="btn-secondary px-4" onClick={addDepartment}>+</button></div>
+        <select className="form-control" value={selectedDepartment} onChange={(event) => { setSelectedDepartment(event.target.value); setSelectedCategory('') }}><option value="">Fachbereich wählen</option>{filteredDepartments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
+        <div className="flex gap-2"><input className="form-control min-w-0 flex-1" placeholder="Kategorie" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} /><button className="btn-secondary px-4" onClick={addCategory}>+</button></div>
+        <select className="form-control" value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)}><option value="">Kategorie optional</option>{filteredCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
       </div>
       <div className="space-y-2 border-t pt-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Building2 className="h-4 w-4" /> Medium einsortieren</div>
-        <select className="w-full rounded-xl border p-3" value={selectedBook} onChange={(event) => setSelectedBook(event.target.value)}><option value="">Buch/Zeitschrift wählen</option>{books.map((book) => <option key={book.id} value={book.id}>{book.title}</option>)}</select>
-        <button className="w-full rounded-xl bg-clinic-700 py-3 font-semibold text-white" onClick={assignMedia}>Zuordnen</button>
+        <select className="form-control" value={selectedBook} onChange={(event) => setSelectedBook(event.target.value)}><option value="">Buch/Zeitschrift wählen</option>{books.map((book) => <option key={book.id} value={book.id}>{book.title}</option>)}</select>
+        <button className="btn-primary w-full" onClick={assignMedia}>Zuordnen</button>
         {message && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
       </div>
       <div className="max-h-44 space-y-2 overflow-auto border-t pt-4">
@@ -470,14 +503,14 @@ function AccountPanel({ currentUser, onUserChanged }: { currentUser: User; onUse
   }
 
   return (
-    <form className="space-y-3 rounded-3xl border bg-white p-5 shadow-sm" onSubmit={submit}>
+    <form className="portal-panel space-y-3" onSubmit={submit}>
       <h3 className="font-bold">Mein Zugang</h3>
       <p className="text-sm text-slate-500">{currentUser.email}</p>
-      <input className="w-full rounded-xl border p-3" type="password" placeholder="Aktuelles Passwort" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
-      <input className="w-full rounded-xl border p-3" type="password" placeholder="Neues Passwort" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={10} required />
+      <input className="form-control" type="password" placeholder="Aktuelles Passwort" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+      <input className="form-control" type="password" placeholder="Neues Passwort" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={10} required />
       {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {message && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
-      <button disabled={busy} className="w-full rounded-xl border px-3 py-3 font-semibold text-clinic-700 disabled:opacity-50">{busy ? 'Aktualisiere Passwort …' : 'Eigenes Passwort ändern'}</button>
+      <button disabled={busy} className="btn-secondary w-full">{busy ? 'Aktualisiere Passwort …' : 'Eigenes Passwort ändern'}</button>
     </form>
   )
 }
@@ -601,21 +634,21 @@ function UserManagementPanel({ currentUser }: { currentUser: User }) {
   }
 
   return (
-    <section className="space-y-4 rounded-3xl border bg-white p-5 shadow-sm">
+    <section className="portal-panel space-y-4">
       <div className="flex items-center gap-2">
         <Users className="h-5 w-5 text-clinic-700" />
         <h3 className="font-bold">Benutzerverwaltung</h3>
       </div>
       <form className="space-y-3" onSubmit={submit}>
-        <input className="w-full rounded-xl border p-3" placeholder="Vollständiger Name" value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required />
-        <input className="w-full rounded-xl border p-3" type="email" placeholder="E-Mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
-        <input className="w-full rounded-xl border p-3" type="password" placeholder="Initiales Passwort" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={10} required />
-        <select className="w-full rounded-xl border p-3" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
+        <input className="form-control" placeholder="Vollständiger Name" value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required />
+        <input className="form-control" type="email" placeholder="E-Mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
+        <input className="form-control" type="password" placeholder="Initiales Passwort" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={10} required />
+        <select className="form-control" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
           {creatableRoles.map((role) => <option key={role} value={role}>{role}</option>)}
         </select>
         {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {success && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
-        <button disabled={saving} className="w-full rounded-xl bg-clinic-700 py-3 font-semibold text-white disabled:opacity-50">{saving ? 'Lege Benutzer an …' : 'Benutzer anlegen'}</button>
+        <button disabled={saving} className="btn-primary w-full">{saving ? 'Lege Benutzer an …' : 'Benutzer anlegen'}</button>
       </form>
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm text-slate-500">
@@ -677,25 +710,58 @@ function highlightTerm(value: string, query: string) {
   return escaped.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>')
 }
 
+function shortTitle(title: string) {
+  return title.split(/\s+/).slice(0, 7).join(' ')
+}
+
+function BookCover({ book, compact = false }: { book: Book; compact?: boolean }) {
+  return (
+    <div className={`${compact ? 'h-28 w-20 rounded-2xl p-3' : 'h-56 rounded-[1.4rem] p-5'} cover-sheen relative flex shrink-0 flex-col justify-between overflow-hidden text-white shadow-xl shadow-slate-900/15`}>
+      <div className="absolute left-0 top-0 h-full w-3 bg-black/20" />
+      <div>
+        <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-sky-100">{book.media_type === 'journal' ? 'Journal' : 'Fachbuch'}</p>
+        <h3 className={`${compact ? 'mt-2 text-[0.7rem]' : 'mt-4 text-xl'} line-clamp-4 font-black leading-tight`}>{shortTitle(book.title)}</h3>
+      </div>
+      <div>
+        <p className="line-clamp-1 text-xs font-semibold text-sky-100">{book.specialty || 'Medizin'}</p>
+        {!compact && <p className="mt-1 line-clamp-1 text-[0.7rem] text-sky-100/80">{book.publisher || book.authors || 'MedLib'}</p>}
+      </div>
+    </div>
+  )
+}
+
 function BookShelf({ books, hits, query, onSelect, onSave }: { books: Book[]; hits: SearchHit[]; query: string; onSelect: (book: Book) => void; onSave: (book: Book) => Promise<void> }) {
   const hitsByBook = useMemo(() => new Map(hits.map((hit) => [hit.book.id, hit])), [hits])
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="portal-eyebrow">Bibliothek</p>
+          <h2 className="text-2xl font-black tracking-tight text-slate-950">Medienbestand</h2>
+        </div>
+        <p className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">{books.length} Treffer</p>
+      </div>
+      <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
       {books.map((book) => {
         const hit = hitsByBook.get(book.id)
         return (
-          <article key={book.id} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-portal">
-            <div className="mb-4 flex h-44 items-end rounded-2xl bg-gradient-to-br from-slate-800 to-clinic-700 p-5 text-white">
-              <div><BookOpen className="mb-3 h-8 w-8" /><h3 className="line-clamp-3 text-xl font-bold">{book.title}</h3></div>
+          <article key={book.id} className="group portal-card grid gap-5 p-5 transition hover:-translate-y-1 hover:shadow-portal sm:grid-cols-[145px_1fr]">
+            <button className="text-left" onClick={() => onSelect(book)} aria-label={`${book.title} öffnen`}><BookCover book={book} /></button>
+            <div className="flex min-w-0 flex-col">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-clinic-700">{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'} · {book.specialty ?? 'Medizin'}</p>
+              <h3 className="mt-2 line-clamp-2 text-xl font-black leading-tight text-slate-950">{book.title}</h3>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{book.authors ?? book.publisher ?? 'Unbekannte Autor:innen'}</p>
+              {hit?.snippet && <p className="snippet mt-4 line-clamp-4 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-slate-700" dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }} />}
+              <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5 text-sm text-slate-500">
+                <span>{book.page_count} Seiten · {book.year || 'o. J.'}</span>
+                <div className="flex gap-2"><button className="btn-secondary" onClick={() => onSave(book)}>Sammeln</button><button className="btn-primary py-2.5" onClick={() => onSelect(book)}>Lesen</button></div>
+              </div>
             </div>
-            <p className="text-sm font-semibold text-clinic-700">{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'} · {book.specialty ?? 'Medizin'}</p>
-            <p className="mt-1 line-clamp-2 text-sm text-slate-600">{book.authors ?? book.publisher ?? 'Unbekannte Autor:innen'}</p>
-            {hit?.snippet && <p className="snippet mt-3 line-clamp-4 rounded-2xl bg-yellow-50 p-3 text-xs text-slate-700" dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }} />}
-            <div className="mt-4 flex items-center justify-between gap-3 text-sm text-slate-500"><span>{book.page_count} Seiten</span><div className="flex gap-3"><button className="font-semibold text-clinic-700" onClick={() => onSave(book)}>Sammeln</button><button className="font-semibold text-clinic-700" onClick={() => onSelect(book)}>Lesen</button></div></div>
           </article>
         )
       })}
-    </div>
+      </div>
+    </section>
   )
 }
 
