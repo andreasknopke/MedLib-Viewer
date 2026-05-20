@@ -28,6 +28,27 @@ def _inspect_dir() -> Path:
     return path
 
 
+def _safe_storage_name(prefix: str, original: str | None) -> str:
+    """Compose a storage filename that fits within ext4's 255-byte limit.
+
+    Keeps the original extension, trims the stem if necessary, and strips
+    characters that are problematic on disk.
+    """
+    raw = Path(original or "book.pdf").name
+    # Replace any path separator artifacts.
+    raw = raw.replace("/", "_").replace("\\", "_")
+    stem = Path(raw).stem or "book"
+    suffix = Path(raw).suffix or ".pdf"
+    # ext4 limit is 255 bytes for the filename. Leave generous headroom.
+    max_total = 200
+    overhead = len(prefix.encode("utf-8")) + 1 + len(suffix.encode("utf-8"))
+    budget = max(20, max_total - overhead)
+    stem_bytes = stem.encode("utf-8")[:budget]
+    # Decode safely (ignore split multibyte chars).
+    stem_trimmed = stem_bytes.decode("utf-8", errors="ignore") or "book"
+    return f"{prefix}-{stem_trimmed}{suffix}"
+
+
 @router.get("", response_model=list[BookRead])
 def list_books(
     q: str | None = None,
@@ -66,7 +87,7 @@ async def upload_book(
     settings = get_settings()
     if file.content_type not in {"application/pdf", "application/octet-stream"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF uploads are supported")
-    safe_name = f"{uuid4()}-{Path(file.filename or 'book.pdf').name}"
+    safe_name = _safe_storage_name(str(uuid4()), file.filename)
     target_path = settings.storage_dir / safe_name
     with target_path.open("wb") as output_file:
         shutil.copyfileobj(file.file, output_file)
@@ -152,7 +173,7 @@ async def inspect_book(
     if file.content_type not in {"application/pdf", "application/octet-stream"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF uploads are supported")
     temp_id = str(uuid4())
-    safe_name = f"{temp_id}-{Path(file.filename or 'book.pdf').name}"
+    safe_name = _safe_storage_name(temp_id, file.filename)
     temp_path = _inspect_dir() / safe_name
     with temp_path.open("wb") as output_file:
         shutil.copyfileobj(file.file, output_file)
@@ -203,8 +224,10 @@ async def commit_inspected_book(
             detail="Inspection payload expired – please upload the file again",
         )
     temp_path = matches[0]
-    final_name = temp_path.name.split("-", 1)[1] if "-" in temp_path.name else temp_path.name
-    final_path = settings.storage_dir / f"{uuid4()}-{final_name}"
+    # Strip the temp_id prefix to recover the original filename portion.
+    pending_stem = temp_path.name[len(payload.temp_id) + 1 :] if temp_path.name.startswith(payload.temp_id + "-") else temp_path.name
+    final_name = _safe_storage_name(str(uuid4()), pending_stem)
+    final_path = settings.storage_dir / final_name
     shutil.move(str(temp_path), final_path)
 
     book = Book(
