@@ -30,27 +30,19 @@ app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"]
 @app.on_event("startup")
 def startup() -> None:
     import logging
-    from alembic.config import Config as AlembicConfig
-    from alembic import command as alembic_command
 
     log = logging.getLogger("medlib.startup")
 
     # 1) Ensure all tables exist (idempotent – safe to run every time)
-    from app.database import Base, engine
-    log.info("Ensuring database tables exist …")
-    Base.metadata.create_all(bind=engine)
-    log.info("Database tables ready.")
-
-    # 2) Stamp Alembic to the current head so future migrations work
     try:
-        alembic_cfg = AlembicConfig("alembic.ini")
-        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        alembic_command.stamp(alembic_cfg, "head")
-        log.info("Alembic stamped to head.")
+        from app.database import Base, engine
+        log.info("Ensuring database tables exist …")
+        Base.metadata.create_all(bind=engine)
+        log.info("Database tables ready.")
     except Exception:
-        log.warning("Alembic stamp failed (non-fatal)", exc_info=True)
+        log.exception("create_all failed")
 
-    # 3) Create root admin if configured
+    # 2) Create root admin if configured
     try:
         ensure_root_admin()
         log.info("Root admin check completed.")
