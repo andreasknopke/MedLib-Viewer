@@ -5,6 +5,7 @@ import type { Book, Bookmark, Category, Clinic, DashboardJob, DashboardMetric, D
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
+  const [activeView, setActiveView] = useState<'library' | 'admin'>('library')
   const [books, setBooks] = useState<Book[]>([])
   const [selectedBook, setSelectedBook] = useState<Book | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -66,6 +67,11 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-600">
+            {(user.role === 'admin' || user.role === 'librarian') && (
+              <button onClick={() => { setActiveView(activeView === 'library' ? 'admin' : 'library'); setSelectedBook(null); }} className="font-semibold text-clinic-700 hover:text-clinic-900 border border-clinic-300 rounded-full px-4 py-2 hover:bg-clinic-50 transition">
+                {activeView === 'library' ? 'Zentrale Verwaltung' : 'Zur Bibliothek'}
+              </button>
+            )}
             <span className="hidden rounded-full bg-clinic-50 px-4 py-2 font-semibold text-clinic-950 sm:inline-flex">{user.full_name} · {user.role}</span>
             <button className="btn-secondary flex items-center gap-2" onClick={() => { api.logout(); setUser(null) }}>
               <LogOut className="h-4 w-4" /> Logout
@@ -89,49 +95,67 @@ function App() {
             </div>
           </section>
 
-          {(user.role === 'admin' || user.role === 'librarian') && <UploadPanel onUploaded={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />}
-          {(user.role === 'admin' || user.role === 'librarian') && <TaxonomyPanel books={books} onChanged={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />}
-          {(user.role === 'admin' || user.role === 'librarian') && <UserManagementPanel currentUser={user} />}
-          <AccountPanel currentUser={user} onUserChanged={setUser} />
-          <Stats books={books} />
+          {activeView === 'library' && (
+            <>
+              <WorkspacePanel workspace={workspace} onSelectBook={(book) => setSelectedBook(book)} />
+              <AccountPanel currentUser={user} onUserChanged={setUser} />
+            </>
+          )}
+
+          {activeView === 'admin' && (
+            <>
+              <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
+              <Stats books={books} />
+              <AccountPanel currentUser={user} onUserChanged={setUser} />
+            </>
+          )}
         </aside>
 
         <section className="space-y-6">
-          <section className="portal-card overflow-hidden p-6 md:p-8">
-            <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
-              <div>
-                <p className="portal-eyebrow">Digitale Bibliothek</p>
-                <h2 className="mt-2 max-w-3xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Suchen, lesen und relevante Fachliteratur sammeln.</h2>
-                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">Medienbestand mit Cover-Karten, OCR-Treffern, Lesezeichen und persönlichen Notizen – optimiert für den Klinikalltag.</p>
-              </div>
-              <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-xl">
-                <p className="text-xs uppercase tracking-[0.25em] text-sky-200">Bestand</p>
-                <p className="mt-3 text-4xl font-black">{books.length}</p>
-                <p className="text-sm text-slate-300">Bücher & Zeitschriften</p>
-              </div>
-            </div>
-            <div className="mt-6 flex flex-col gap-3 rounded-[1.5rem] bg-slate-100/80 p-2 sm:flex-row">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-3.5 h-5 w-5 text-clinic-700" />
-                <input
-                  className="form-control border-transparent bg-white py-3.5 pl-12"
-                  placeholder="Diagnose, Kapitel, Autor, ISBN oder Therapie suchen …"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && runSearch()}
-                />
-              </div>
-              <button className="btn-primary sm:min-w-36" onClick={runSearch}>Suchen</button>
-            </div>
-          </section>
+          {activeView === 'library' && (
+            <>
+              <section className="portal-card overflow-hidden p-6 md:p-8">
+                <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
+                  <div>
+                    <p className="portal-eyebrow">Digitale Bibliothek</p>
+                    <h2 className="mt-2 max-w-3xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Suchen, lesen und relevante Fachliteratur sammeln.</h2>
+                    <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">Medienbestand mit Cover-Karten, OCR-Treffern, Lesezeichen und persönliche Notizen – optimiert für den Klinikalltag.</p>
+                  </div>
+                  <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-xl">
+                    <p className="text-xs uppercase tracking-[0.25em] text-sky-200">Bestand</p>
+                    <p className="mt-3 text-4xl font-black">{books.length}</p>
+                    <p className="text-sm text-slate-300">Bücher & Zeitschriften</p>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-col gap-3 rounded-[1.5rem] bg-slate-100/80 p-2 sm:flex-row">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-3.5 h-5 w-5 text-clinic-700" />
+                    <input
+                      className="form-control border-transparent bg-white py-3.5 pl-12"
+                      placeholder="Diagnose, Kapitel, Autor, ISBN oder Therapie suchen …"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      onKeyDown={(event) => event.key === 'Enter' && runSearch()}
+                    />
+                  </div>
+                  <button className="btn-primary sm:min-w-36" onClick={runSearch}>Suchen</button>
+                </div>
+              </section>
 
-          <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
-          <WorkspacePanel workspace={workspace} onSelectBook={(book) => setSelectedBook(book)} />
+              {selectedBook ? (
+                <Reader book={selectedBook} query={searchQuery} onBack={() => setSelectedBook(null)} onSave={saveToWorkspace} />
+              ) : (
+                <BookShelf books={books} hits={searchHits} query={searchQuery} onSelect={setSelectedBook} onSave={saveToWorkspace} />
+              )}
+            </>
+          )}
 
-          {selectedBook ? (
-            <Reader book={selectedBook} query={searchQuery} onBack={() => setSelectedBook(null)} onSave={saveToWorkspace} />
-          ) : (
-            <BookShelf books={books} hits={searchHits} query={searchQuery} onSelect={setSelectedBook} onSave={saveToWorkspace} />
+          {activeView === 'admin' && (
+            <>
+              <UploadPanel onUploaded={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
+              <TaxonomyPanel books={books} onChanged={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
+              <UserManagementPanel currentUser={user} />
+            </>
           )}
         </section>
       </main>
@@ -142,12 +166,12 @@ function App() {
 function WorkspacePanel({ workspace, onSelectBook }: { workspace: UserWorkspace | null; onSelectBook: (book: Book) => void }) {
   if (!workspace) return null
   return (
-    <section className="portal-card grid gap-4 p-6 xl:grid-cols-3">
+    <section className="portal-card grid gap-6 p-6">
       <div>
         <div className="mb-3 flex items-center gap-2"><Star className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Meine Sammlung</h3></div>
         <div className="space-y-2">
           {workspace.saved_media.slice(0, 6).map((entry) => (
-            <button key={entry.id} className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 p-3 text-left text-sm hover:bg-slate-100" onClick={() => onSelectBook(entry.book)}>
+            <button key={entry.id} className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 p-3 text-left text-sm hover:bg-slate-100 transition" onClick={() => onSelectBook(entry.book)}>
               <BookCover book={entry.book} compact />
               <span><span className="line-clamp-2 font-bold text-slate-900">{entry.book.title}</span><span className="block text-slate-500">{entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span></span>
             </button>
@@ -155,7 +179,7 @@ function WorkspacePanel({ workspace, onSelectBook }: { workspace: UserWorkspace 
           {!workspace.saved_media.length && <p className="text-sm text-slate-500">Noch keine ausgewählten Medien.</p>}
         </div>
       </div>
-      <div>
+      <div className="border-t border-slate-100 pt-5">
         <h3 className="mb-3 font-bold">Meine Bookmarks</h3>
         <div className="space-y-2">
           {workspace.bookmarks.slice(0, 6).map((bookmark) => (
@@ -164,7 +188,7 @@ function WorkspacePanel({ workspace, onSelectBook }: { workspace: UserWorkspace 
           {!workspace.bookmarks.length && <p className="text-sm text-slate-500">Noch keine Bookmarks.</p>}
         </div>
       </div>
-      <div>
+      <div className="border-t border-slate-100 pt-5">
         <h3 className="mb-3 font-bold">Meine Notizen</h3>
         <div className="space-y-2">
           {workspace.notes.slice(0, 6).map((note) => (
@@ -731,7 +755,19 @@ function BookCover({ book, compact = false }: { book: Book; compact?: boolean })
 }
 
 function BookShelf({ books, hits, query, onSelect, onSave }: { books: Book[]; hits: SearchHit[]; query: string; onSelect: (book: Book) => void; onSave: (book: Book) => Promise<void> }) {
+  const [sortBy, setSortBy] = useState<'title' | 'year' | 'specialty' | 'author'>('title')
   const hitsByBook = useMemo(() => new Map(hits.map((hit) => [hit.book.id, hit])), [hits])
+
+  const sortedBooks = useMemo(() => {
+    return [...books].sort((a, b) => {
+      if (sortBy === 'title') return a.title.localeCompare(b.title)
+      if (sortBy === 'year') return (b.year || 0) - (a.year || 0)
+      if (sortBy === 'specialty') return (a.specialty || '').localeCompare(b.specialty || '')
+      if (sortBy === 'author') return (a.authors || a.publisher || '').localeCompare(b.authors || b.publisher || '')
+      return 0
+    })
+  }, [books, sortBy])
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -739,10 +775,22 @@ function BookShelf({ books, hits, query, onSelect, onSave }: { books: Book[]; hi
           <p className="portal-eyebrow">Bibliothek</p>
           <h2 className="text-2xl font-black tracking-tight text-slate-950">Medienbestand</h2>
         </div>
-        <p className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">{books.length} Treffer</p>
+        <div className="flex items-center gap-3">
+          <select 
+            className="form-control bg-white text-sm shadow-sm font-semibold text-slate-700 py-2 border-slate-200" 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value as any)}
+          >
+            <option value="title">Nach Titel sortieren</option>
+            <option value="year">Nach Jahr (Neuste zuerst)</option>
+            <option value="specialty">Nach Fachgebiet</option>
+            <option value="author">Nach Autor</option>
+          </select>
+          <p className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">{books.length} Treffer</p>
+        </div>
       </div>
       <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
-      {books.map((book) => {
+      {sortedBooks.map((book) => {
         const hit = hitsByBook.get(book.id)
         return (
           <article key={book.id} className="group portal-card grid gap-5 p-5 transition hover:-translate-y-1 hover:shadow-portal sm:grid-cols-[145px_1fr]">
