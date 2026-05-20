@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+node_modules/
+dist/
+storage/books/*
+!storage/books/.gitkeep
+.DS_Store

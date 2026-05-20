@@ -1,0 +1,28 @@
+[project]
+name = "medlib-backend"
+version = "0.1.0"
+description = "Clinic-hosted PDF/OCR library backend for medical textbooks"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.13.2",
+  "bcrypt>=4.1.3",
+  "email-validator>=2.2.0",
+  "fastapi>=0.112.0",
+  "passlib[bcrypt]>=1.7.4",
+  "pdf2image>=1.17.0",
+  "psycopg[binary]>=3.2.1",
+  "pydantic-settings>=2.4.0",
+  "pypdf>=4.3.1",
+  "pytesseract>=0.3.13",
+  "python-jose[cryptography]>=3.3.0",
+  "python-multipart>=0.0.9",
+  "sqlalchemy>=2.0.32",
+  "uvicorn[standard]>=0.30.5"
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.5.7", "pytest>=8.3.2", "httpx>=0.27.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
