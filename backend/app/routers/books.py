@@ -5,6 +5,7 @@ from threading import Thread
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
@@ -157,8 +158,23 @@ async def inspect_book(
         shutil.copyfileobj(file.file, output_file)
 
     settings = get_settings()
-    cover_text = ocr_cover_text(temp_path, language=settings.ocr_language)
-    result = lookup_metadata(cover_text, filename=file.filename)
+
+    # OCR + outbound HTTP must not block the event loop, and must never
+    # raise (otherwise the whole upload flow returns 504/500).
+    def _run() -> tuple[str, object]:
+        try:
+            text = ocr_cover_text(temp_path, language=settings.ocr_language)
+        except Exception:
+            text = ""
+        try:
+            res = lookup_metadata(text, filename=file.filename)
+        except Exception:
+            from app.metadata import LookupResult
+
+            res = LookupResult(cover_text=text, isbn=None, suggested_query="", best=None)
+        return text, res
+
+    cover_text, result = await run_in_threadpool(_run)
 
     return InspectResponse(
         temp_id=temp_id,

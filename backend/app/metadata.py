@@ -21,7 +21,9 @@ ISBN_REGEX = re.compile(
     re.IGNORECASE,
 )
 
-HTTP_TIMEOUT = httpx.Timeout(8.0, connect=4.0)
+# Aggressive timeouts: the inspect endpoint must respond well within nginx's
+# default 60s gateway timeout, even when both providers are slow.
+HTTP_TIMEOUT = httpx.Timeout(3.5, connect=2.0)
 
 
 @dataclass
@@ -180,8 +182,9 @@ def _openlibrary_by_isbn(client: httpx.Client, isbn: str) -> MetadataCandidate |
 
 
 def _resolve_openlibrary_authors(client: httpx.Client, refs: list[dict[str, Any]]) -> list[str]:
+    """Resolve at most one author reference to keep latency bounded."""
     names: list[str] = []
-    for ref in refs[:3]:
+    for ref in refs[:1]:
         key = ref.get("key") if isinstance(ref, dict) else None
         if not key:
             continue
@@ -392,38 +395,39 @@ def lookup_metadata(cover_text: str, filename: str | None = None) -> LookupResul
     candidates: list[MetadataCandidate] = []
     tried_googlebooks = False
 
-    with httpx.Client(timeout=HTTP_TIMEOUT, headers={"User-Agent": "MedLib/1.0"}) as client:
-        if isbn:
-            ol = _openlibrary_by_isbn(client, isbn)
-            if ol:
-                candidates.append(ol)
-            candidates.extend(_googlebooks_search(client, "", isbn=isbn))
-            tried_googlebooks = True
+    try:
+        with httpx.Client(timeout=HTTP_TIMEOUT, headers={"User-Agent": "MedLib/1.0"}) as client:
+            if isbn:
+                ol = _openlibrary_by_isbn(client, isbn)
+                if ol:
+                    candidates.append(ol)
+                candidates.extend(_googlebooks_search(client, "", isbn=isbn))
+                tried_googlebooks = True
 
-        # Structured OL search with filename hints (strongest signal).
-        if hints.title or hints.authors:
-            candidates.extend(
-                _openlibrary_structured(client, title=hints.title, author=hints.authors)
-            )
+            # Structured OL search with filename hints (strongest signal).
+            if hints.title or hints.authors:
+                candidates.extend(
+                    _openlibrary_structured(client, title=hints.title, author=hints.authors)
+                )
 
-        # Try several query variants until at least one yields results.
-        queries: list[str] = []
-        if hints.title:
-            queries.append(hints.title)
-            if hints.authors:
-                queries.append(f"{hints.title} {hints.authors.split(',')[0].strip()}")
-        if cover_query and cover_query not in queries:
-            queries.append(cover_query)
+            # Try at most two query variants to keep total latency bounded.
+            queries: list[str] = []
+            if hints.title:
+                queries.append(hints.title)
+            elif cover_query:
+                queries.append(cover_query)
 
-        for q in queries:
-            new = _openlibrary_search(client, q)
-            candidates.extend(new)
-            if new:
-                # First successful query is usually enough for OpenLibrary.
-                break
+            for q in queries[:2]:
+                new = _openlibrary_search(client, q)
+                candidates.extend(new)
+                if new:
+                    break
 
-        if not tried_googlebooks and queries:
-            candidates.extend(_googlebooks_search(client, queries[0]))
+            if not tried_googlebooks and queries:
+                candidates.extend(_googlebooks_search(client, queries[0]))
+    except Exception:
+        # Any unexpected failure (DNS, SSL, etc.) must not break the upload flow.
+        candidates = []
 
     # Score candidates.
     def score(candidate: MetadataCandidate) -> tuple[int, int, int, int]:
