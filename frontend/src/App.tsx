@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, BookOpen, Building2, Database, Download, FileUp, FolderTree, Library, LogOut, Search, ShieldCheck, Sparkles, Star, Users } from 'lucide-react'
+import { Activity, BookOpen, Building2, ChevronRight, Database, Download, FileUp, FolderTree, Library, LogOut, Search, ShieldCheck, Sparkles, Star, Users } from 'lucide-react'
 import { api } from './api'
 import type { Book, Bookmark, Category, Clinic, DashboardJob, DashboardMetric, DashboardOverview, Department, Highlight, Note, PageText, Placement, Role, SearchHit, User, UserWorkspace } from './types'
 
@@ -80,86 +80,149 @@ function App() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
-        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-          <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-6 text-white shadow-portal">
-            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.25em] text-sky-100">
-              <Sparkles className="h-4 w-4" /> OCR-Archiv
-            </div>
-            <h2 className="mt-4 text-3xl font-black leading-tight">Fachwissen für Klinikteams.</h2>
-            <p className="mt-3 text-sm leading-6 text-sky-100">Portalartige Oberfläche für Fachbücher, Journals, Volltextsuche, Annotationen und persönliche Sammlungen.</p>
-            <div className="mt-6 grid grid-cols-3 gap-2 text-center text-xs font-semibold text-sky-50">
-              <span className="rounded-2xl bg-white/10 px-3 py-2">OCR</span>
-              <span className="rounded-2xl bg-white/10 px-3 py-2">Notizen</span>
-              <span className="rounded-2xl bg-white/10 px-3 py-2">Klinikstruktur</span>
-            </div>
+      {activeView === 'library' ? (
+        <LibraryHome
+          user={user}
+          books={books}
+          workspace={workspace}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          searchHits={searchHits}
+          selectedBook={selectedBook}
+          onRunSearch={runSearch}
+          onSelectBook={setSelectedBook}
+          onSaveBook={saveToWorkspace}
+        />
+      ) : (
+        <main className="mx-auto grid max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
+          <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+            <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-6 text-white shadow-portal">
+              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.25em] text-sky-100">
+                <Sparkles className="h-4 w-4" /> Administration
+              </div>
+              <h2 className="mt-4 text-3xl font-black leading-tight">Zentrale Verwaltung der Bibliothek.</h2>
+              <p className="mt-3 text-sm leading-6 text-sky-100">Uploads, OCR-Prozesse, Zuordnung und Benutzerverwaltung liegen bewusst getrennt von der eigentlichen Bibliothek.</p>
+            </section>
+            <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
+            <Stats books={books} />
+            <AccountPanel currentUser={user} onUserChanged={setUser} />
+          </aside>
+
+          <section className="space-y-6">
+            <UploadPanel onUploaded={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
+            <TaxonomyPanel books={books} onChanged={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
+            <UserManagementPanel currentUser={user} />
           </section>
+        </main>
+      )}
+    </div>
+  )
+}
 
-          {activeView === 'library' && (
-            <>
-              <WorkspacePanel workspace={workspace} onSelectBook={(book) => setSelectedBook(book)} />
-              <AccountPanel currentUser={user} onUserChanged={setUser} />
-            </>
-          )}
+function LibraryHome({ user, books, workspace, searchQuery, setSearchQuery, searchHits, selectedBook, onRunSearch, onSelectBook, onSaveBook }: { user: User; books: Book[]; workspace: UserWorkspace | null; searchQuery: string; setSearchQuery: (value: string) => void; searchHits: SearchHit[]; selectedBook: Book | null; onRunSearch: () => Promise<void>; onSelectBook: (book: Book | null) => void; onSaveBook: (book: Book) => Promise<void> }) {
+  const featuredBooks = useMemo(() => [...books].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()).slice(0, 6), [books])
+  const topSpecialties = useMemo(() => {
+    const counts = new Map<string, number>()
+    books.forEach((book) => {
+      const specialty = book.specialty?.trim() || 'Allgemeinmedizin'
+      counts.set(specialty, (counts.get(specialty) ?? 0) + 1)
+    })
+    return [...counts.entries()].sort((left, right) => right[1] - left[1]).slice(0, 5)
+  }, [books])
 
-          {activeView === 'admin' && (
-            <>
-              <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
-              <Stats books={books} />
-              <AccountPanel currentUser={user} onUserChanged={setUser} />
-            </>
-          )}
+  return (
+    <main className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6 lg:px-8">
+      <section className="portal-card relative overflow-hidden p-6 md:p-8 xl:p-10">
+        <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[32rem] bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_58%)] xl:block" />
+        <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+          <div>
+            <p className="portal-eyebrow">Digitale Bibliothek</p>
+            <h2 className="mt-3 max-w-4xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Willkommen zurück, {user.full_name.split(' ')[0]}. Hier startet die Bibliothek – nicht die Verwaltung.</h2>
+            <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">Durchsuche den Bestand wie in einem modernen Fachportal: mit Titelvorschauen, Regalansicht, Sortierung und direktem Zugriff auf relevante Literatur für den Klinikalltag.</p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              {topSpecialties.map(([specialty, count]) => (
+                <span key={specialty} className="rounded-full border border-sky-100 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800">{specialty} · {count}</span>
+              ))}
+            </div>
+
+            <div className="mt-8 flex flex-col gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50/90 p-3 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-3.5 h-5 w-5 text-clinic-700" />
+                <input className="form-control border-white bg-white py-3.5 pl-12" placeholder="Diagnose, Fachgebiet, Autor:in, ISBN oder Therapie suchen …" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void onRunSearch()} />
+              </div>
+              <button className="btn-primary sm:min-w-40" onClick={() => void onRunSearch()}>Suche starten</button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-xl">
+              <p className="text-xs uppercase tracking-[0.25em] text-sky-200">Bestand</p>
+              <p className="mt-3 text-4xl font-black">{books.length}</p>
+              <p className="text-sm text-slate-300">Bücher & Journale im Portal</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Meine Sammlung</p>
+              <p className="mt-3 text-3xl font-black text-slate-950">{workspace?.saved_media.length ?? 0}</p>
+              <p className="text-sm text-slate-500">gemerkte Titel</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Merkhilfen</p>
+              <p className="mt-3 text-3xl font-black text-slate-950">{(workspace?.bookmarks.length ?? 0) + (workspace?.notes.length ?? 0)}</p>
+              <p className="text-sm text-slate-500">Bookmarks & Notizen</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {!selectedBook && <FeaturedShelf books={featuredBooks} onSelectBook={(book) => onSelectBook(book)} />}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+          <section className="portal-card p-6">
+            <p className="portal-eyebrow">Benutzerbereich</p>
+            <h3 className="mt-3 text-2xl font-black text-slate-950">Meine Bibliothek</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Merkliste, Bookmarks und Notizen bleiben erreichbar, ohne die Bibliothek mit Administrationsformularen zu überladen.</p>
+          </section>
+          <WorkspacePanel workspace={workspace} onSelectBook={(book) => onSelectBook(book)} />
         </aside>
 
         <section className="space-y-6">
-          {activeView === 'library' && (
-            <>
-              <section className="portal-card overflow-hidden p-6 md:p-8">
-                <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
-                  <div>
-                    <p className="portal-eyebrow">Digitale Bibliothek</p>
-                    <h2 className="mt-2 max-w-3xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Suchen, lesen und relevante Fachliteratur sammeln.</h2>
-                    <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">Medienbestand mit Cover-Karten, OCR-Treffern, Lesezeichen und persönliche Notizen – optimiert für den Klinikalltag.</p>
-                  </div>
-                  <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-xl">
-                    <p className="text-xs uppercase tracking-[0.25em] text-sky-200">Bestand</p>
-                    <p className="mt-3 text-4xl font-black">{books.length}</p>
-                    <p className="text-sm text-slate-300">Bücher & Zeitschriften</p>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-col gap-3 rounded-[1.5rem] bg-slate-100/80 p-2 sm:flex-row">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-3.5 h-5 w-5 text-clinic-700" />
-                    <input
-                      className="form-control border-transparent bg-white py-3.5 pl-12"
-                      placeholder="Diagnose, Kapitel, Autor, ISBN oder Therapie suchen …"
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      onKeyDown={(event) => event.key === 'Enter' && runSearch()}
-                    />
-                  </div>
-                  <button className="btn-primary sm:min-w-36" onClick={runSearch}>Suchen</button>
-                </div>
-              </section>
-
-              {selectedBook ? (
-                <Reader book={selectedBook} query={searchQuery} onBack={() => setSelectedBook(null)} onSave={saveToWorkspace} />
-              ) : (
-                <BookShelf books={books} hits={searchHits} query={searchQuery} onSelect={setSelectedBook} onSave={saveToWorkspace} />
-              )}
-            </>
-          )}
-
-          {activeView === 'admin' && (
-            <>
-              <UploadPanel onUploaded={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
-              <TaxonomyPanel books={books} onChanged={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
-              <UserManagementPanel currentUser={user} />
-            </>
+          {selectedBook ? (
+            <Reader book={selectedBook} query={searchQuery} onBack={() => onSelectBook(null)} onSave={onSaveBook} />
+          ) : (
+            <BookShelf books={books} hits={searchHits} query={searchQuery} onSelect={onSelectBook} onSave={onSaveBook} />
           )}
         </section>
-      </main>
-    </div>
+      </div>
+    </main>
+  )
+}
+
+function FeaturedShelf({ books, onSelectBook }: { books: Book[]; onSelectBook: (book: Book) => void }) {
+  if (!books.length) return null
+
+  return (
+    <section className="library-shelf mt-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm md:p-6">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div>
+          <p className="portal-eyebrow">Neu im Regal</p>
+          <h3 className="mt-2 text-2xl font-black text-slate-950">Titelvorschau mit direktem Einstieg</h3>
+        </div>
+        <span className="hidden rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 sm:inline-flex">{books.length} aktuelle Zugänge</span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {books.map((book) => (
+          <button key={book.id} className="featured-book text-left" onClick={() => onSelectBook(book)}>
+            <BookCover book={book} />
+            <div className="mt-3">
+              <p className="line-clamp-2 text-sm font-bold text-slate-950">{book.title}</p>
+              <p className="mt-1 text-xs text-slate-500">{book.authors || book.publisher || 'MedLib'}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -349,32 +412,57 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
   }
 
   return (
-    <div className="grid min-h-screen place-items-center px-5 py-10">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-[2.25rem] border border-white/80 bg-white shadow-portal lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden min-h-[620px] overflow-hidden bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-10 text-white lg:block">
-          <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl" />
-          <div className="relative z-10 flex h-full flex-col justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.35em] text-sky-100">Klinikportal</p>
-              <h1 className="mt-5 text-5xl font-black leading-tight">MedLib Fachbibliothek</h1>
-              <p className="mt-5 max-w-md text-sm leading-7 text-sky-50">Fachbücher, Journals und OCR-Volltextsuche in einer geschützten Klinikoberfläche.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {['Volltextsuche', 'Persönliche Sammlung', 'Bookmarks & Notizen', 'Klinik-Struktur'].map((item) => <span key={item} className="rounded-2xl bg-white/12 px-4 py-3 font-semibold backdrop-blur">{item}</span>)}
-            </div>
+    <div className="relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(8,47,73,0.18),_transparent_28%)]" />
+      <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_440px]">
+        <section className="hidden lg:block">
+          <p className="portal-eyebrow">Klinikportal</p>
+          <h1 className="mt-4 max-w-2xl text-6xl font-black leading-[1.02] text-slate-950">Fachwissen, das sich wie eine moderne Bibliothek anfühlt.</h1>
+          <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">Volltextsuche, Merklisten und kuratierter Zugriff auf medizinische Literatur – in einer Oberfläche, die eher nach Fachportal als nach Verwaltungsmaske aussieht.</p>
+          <div className="mt-10 grid max-w-3xl gap-5 sm:grid-cols-3">
+            {[
+              ['Journals', 'Aktuelle Ausgaben und Reihen'],
+              ['Bücher', 'Lehrbücher und Standardwerke'],
+              ['OCR-Suche', 'Kapitel und Inhalte sekundenschnell finden']
+            ].map(([title, description], index) => (
+              <div key={title} className="rounded-[1.75rem] border border-white/70 bg-white/75 p-4 shadow-lg backdrop-blur">
+                <div className={`login-preview-cover login-preview-${index + 1}`} />
+                <h3 className="mt-4 text-lg font-black text-slate-950">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+              </div>
+            ))}
           </div>
         </section>
-        <section className="mx-auto w-full max-w-md p-7 sm:p-10 lg:p-12">
-          <div className="mb-10 flex items-center gap-3">
-            <div className="rounded-2xl bg-clinic-700 p-3 text-white shadow-lg shadow-sky-900/20"><ShieldCheck /></div>
-            <div><p className="portal-eyebrow">MedLib</p><h2 className="text-3xl font-black tracking-tight">Anmelden</h2></div>
+
+        <section className="login-card mx-auto w-full max-w-[28rem] rounded-[2rem] border border-white/80 bg-white/88 p-7 shadow-portal backdrop-blur-xl sm:p-9">
+          <div className="mb-8 flex items-center gap-4">
+            <div className="rounded-[1.25rem] bg-gradient-to-br from-clinic-950 to-clinic-500 p-3 text-white shadow-lg shadow-sky-900/20"><ShieldCheck className="h-6 w-6" /></div>
+            <div>
+              <p className="portal-eyebrow">MedLib</p>
+              <h2 className="text-3xl font-black tracking-tight text-slate-950">Anmelden</h2>
+            </div>
           </div>
-          <label className="text-sm font-bold text-slate-600">E-Mail</label>
-          <input className="form-control mb-4 mt-2" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-          <label className="text-sm font-bold text-slate-600">Passwort</label>
-          <input className="form-control mb-6 mt-2" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submit()} autoComplete="current-password" />
-          {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
-          <button className="btn-primary w-full py-3.5" onClick={submit}>Einloggen</button>
+
+          <div className="mb-6 rounded-[1.25rem] border border-sky-100 bg-sky-50/70 p-4 text-sm leading-6 text-sky-900">
+            Zugriff auf die digitale Klinikbibliothek mit persönlicher Merkliste, Journals und Volltextsuche.
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">E-Mail</label>
+              <input className="form-control" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@klinik.de" />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">Passwort</label>
+              <input className="form-control" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void submit()} autoComplete="current-password" placeholder="••••••••" />
+            </div>
+          </div>
+
+          {error && <p className="mt-5 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+
+          <button className="btn-primary mt-6 flex w-full items-center justify-center gap-2 py-3.5" onClick={() => void submit()}>
+            Einloggen <ChevronRight className="h-4 w-4" />
+          </button>
           <p className="mt-5 text-center text-xs leading-5 text-slate-500">Zugang nur für berechtigte Nutzer:innen der Klinikbibliothek.</p>
         </section>
       </div>
@@ -738,10 +826,23 @@ function shortTitle(title: string) {
   return title.split(/\s+/).slice(0, 7).join(' ')
 }
 
+function coverTheme(book: Book) {
+  const themes = [
+    'from-[#143a68] via-[#1d5d97] to-[#63b4ff]',
+    'from-[#43286b] via-[#6a3ea1] to-[#c084fc]',
+    'from-[#0f4c5c] via-[#14798a] to-[#6bd2dc]',
+    'from-[#3c2f17] via-[#8f5b1f] to-[#e9b44c]',
+    'from-[#1d3b2f] via-[#2f7d58] to-[#7fd1a3]'
+  ]
+  const signature = `${book.title}${book.specialty ?? ''}`.split('').reduce((sum, character) => sum + character.charCodeAt(0), 0)
+  return themes[signature % themes.length]
+}
+
 function BookCover({ book, compact = false }: { book: Book; compact?: boolean }) {
   return (
-    <div className={`${compact ? 'h-28 w-20 rounded-2xl p-3' : 'h-56 rounded-[1.4rem] p-5'} cover-sheen relative flex shrink-0 flex-col justify-between overflow-hidden text-white shadow-xl shadow-slate-900/15`}>
+    <div className={`${compact ? 'h-28 w-20 rounded-2xl p-3' : 'h-56 w-40 rounded-[1.4rem] p-5'} ${coverTheme(book)} cover-sheen relative flex shrink-0 flex-col justify-between overflow-hidden bg-gradient-to-br text-white shadow-xl shadow-slate-900/15`}>
       <div className="absolute left-0 top-0 h-full w-3 bg-black/20" />
+      <div className="absolute inset-x-4 top-4 h-px bg-white/30" />
       <div>
         <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-sky-100">{book.media_type === 'journal' ? 'Journal' : 'Fachbuch'}</p>
         <h3 className={`${compact ? 'mt-2 text-[0.7rem]' : 'mt-4 text-xl'} line-clamp-4 font-black leading-tight`}>{shortTitle(book.title)}</h3>
@@ -755,59 +856,102 @@ function BookCover({ book, compact = false }: { book: Book; compact?: boolean })
 }
 
 function BookShelf({ books, hits, query, onSelect, onSave }: { books: Book[]; hits: SearchHit[]; query: string; onSelect: (book: Book) => void; onSave: (book: Book) => Promise<void> }) {
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'book' | 'journal'>('all')
+  const [letterFilter, setLetterFilter] = useState('ALLE')
   const [sortBy, setSortBy] = useState<'title' | 'year' | 'specialty' | 'author'>('title')
   const hitsByBook = useMemo(() => new Map(hits.map((hit) => [hit.book.id, hit])), [hits])
 
   const sortedBooks = useMemo(() => {
-    return [...books].sort((a, b) => {
+    return [...books]
+    .filter((book) => mediaFilter === 'all' || book.media_type === mediaFilter)
+    .filter((book) => letterFilter === 'ALLE' || book.title.trim().charAt(0).toUpperCase() === letterFilter)
+    .sort((a, b) => {
       if (sortBy === 'title') return a.title.localeCompare(b.title)
       if (sortBy === 'year') return (b.year || 0) - (a.year || 0)
       if (sortBy === 'specialty') return (a.specialty || '').localeCompare(b.specialty || '')
       if (sortBy === 'author') return (a.authors || a.publisher || '').localeCompare(b.authors || b.publisher || '')
       return 0
     })
-  }, [books, sortBy])
+  }, [books, letterFilter, mediaFilter, sortBy])
+
+  const letters = useMemo(() => ['ALLE', ...new Set(books.map((book) => book.title.trim().charAt(0).toUpperCase()).filter(Boolean))], [books])
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="portal-eyebrow">Bibliothek</p>
-          <h2 className="text-2xl font-black tracking-tight text-slate-950">Medienbestand</h2>
+    <section className="portal-card overflow-hidden p-5 md:p-6">
+      <div className="flex flex-col gap-5 border-b border-slate-200 pb-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="portal-eyebrow">Bibliothek</p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Regalansicht & Bestandsliste</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Wie in einem Fachportal: nach Medium filtern, alphabetisch eingrenzen und anschließend gezielt nach Relevanz sortieren.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1">
+              {[
+                ['all', 'Alle'],
+                ['journal', 'Zeitschriften'],
+                ['book', 'Bücher']
+              ].map(([value, label]) => (
+                <button key={value} className={`portal-tab ${mediaFilter === value ? 'portal-tab-active' : ''}`} onClick={() => setMediaFilter(value as 'all' | 'book' | 'journal')} type="button">{label}</button>
+              ))}
+            </div>
+            <select className="form-control min-w-[220px] bg-white text-sm font-semibold text-slate-700 shadow-sm" value={sortBy} onChange={(event) => setSortBy(event.target.value as 'title' | 'year' | 'specialty' | 'author')}>
+              <option value="title">Sortieren nach Titel</option>
+              <option value="year">Sortieren nach Jahr</option>
+              <option value="specialty">Sortieren nach Fachgebiet</option>
+              <option value="author">Sortieren nach Autor:in</option>
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <select 
-            className="form-control bg-white text-sm shadow-sm font-semibold text-slate-700 py-2 border-slate-200" 
-            value={sortBy} 
-            onChange={(e) => setSortBy(e.target.value as any)}
-          >
-            <option value="title">Nach Titel sortieren</option>
-            <option value="year">Nach Jahr (Neuste zuerst)</option>
-            <option value="specialty">Nach Fachgebiet</option>
-            <option value="author">Nach Autor</option>
-          </select>
-          <p className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">{books.length} Treffer</p>
+        <div className="alphabet-rail">
+          {letters.map((letter) => (
+            <button key={letter} className={`alphabet-chip ${letterFilter === letter ? 'alphabet-chip-active' : ''}`} onClick={() => setLetterFilter(letter)} type="button">{letter}</button>
+          ))}
         </div>
       </div>
-      <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">{sortedBooks.length} Titel in der aktuellen Auswahl</p>
+        <p className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">{query.trim() ? `Suche: ${query}` : 'Alle Ergebnisse'}</p>
+      </div>
+
+      <div className="mt-5 space-y-4">
       {sortedBooks.map((book) => {
         const hit = hitsByBook.get(book.id)
         return (
-          <article key={book.id} className="group portal-card grid gap-5 p-5 transition hover:-translate-y-1 hover:shadow-portal sm:grid-cols-[145px_1fr]">
+          <article key={book.id} className="portal-list-row group">
             <button className="text-left" onClick={() => onSelect(book)} aria-label={`${book.title} öffnen`}><BookCover book={book} /></button>
-            <div className="flex min-w-0 flex-col">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-clinic-700">{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'} · {book.specialty ?? 'Medizin'}</p>
-              <h3 className="mt-2 line-clamp-2 text-xl font-black leading-tight text-slate-950">{book.title}</h3>
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{book.authors ?? book.publisher ?? 'Unbekannte Autor:innen'}</p>
-              {hit?.snippet && <p className="snippet mt-4 line-clamp-4 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-slate-700" dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }} />}
-              <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5 text-sm text-slate-500">
-                <span>{book.page_count} Seiten · {book.year || 'o. J.'}</span>
-                <div className="flex gap-2"><button className="btn-secondary" onClick={() => onSave(book)}>Sammeln</button><button className="btn-primary py-2.5" onClick={() => onSelect(book)}>Lesen</button></div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-clinic-700">
+                <span>{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span>
+                <span className="text-slate-300">•</span>
+                <span>{book.specialty ?? 'Medizin'}</span>
               </div>
+              <button className="mt-2 text-left" onClick={() => onSelect(book)}>
+                <h3 className="line-clamp-2 text-2xl font-black leading-tight text-slate-950 group-hover:text-clinic-700">{book.title}</h3>
+              </button>
+              <p className="mt-2 text-base text-slate-600">{book.authors ?? book.publisher ?? 'Unbekannte Autor:innen'}</p>
+              <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">{book.year || 'o. J.'}</span>
+                <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">{book.page_count} Seiten</span>
+                {book.publisher && <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">{book.publisher}</span>}
+              </div>
+              {hit?.snippet && <p className="snippet mt-4 line-clamp-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }} />}
+            </div>
+            <div className="flex flex-col gap-3 self-center md:items-end">
+              <button className="btn-primary w-full md:min-w-32" onClick={() => onSelect(book)}>Lesen</button>
+              <button className="btn-secondary w-full md:min-w-32" onClick={() => void onSave(book)}>Merken</button>
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Direktzugriff</span>
             </div>
           </article>
         )
       })}
+      {!sortedBooks.length && (
+        <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+          <p className="text-lg font-bold text-slate-900">Keine Titel in dieser Auswahl.</p>
+          <p className="mt-2 text-sm text-slate-500">Passe Filter oder Suchbegriff an, um weitere Medien zu sehen.</p>
+        </div>
+      )}
       </div>
     </section>
   )

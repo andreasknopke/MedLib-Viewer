@@ -129,7 +129,120 @@ button:disabled {
   background-image:
     linear-gradient(115deg, rgba(255,255,255,.28), transparent 34%, rgba(255,255,255,.12) 60%, transparent 70%),
     radial-gradient(circle at 20% 18%, rgba(255,255,255,.32), transparent 22rem),
-    linear-gradient(145deg, #082f49, #0369a1 52%, #0ea5e9);
+    linear-gradient(145deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+}
+
+.library-shelf {
+  position: relative;
+}
+
+.library-shelf::after {
+  content: '';
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 1.25rem;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #a16207, #d4a373 50%, #8b5e34);
+  opacity: 0.22;
+}
+
+.featured-book {
+  position: relative;
+  border-radius: 1.5rem;
+  padding: 0.5rem;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.featured-book:hover {
+  transform: translateY(-3px);
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.portal-tab {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #475569;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+}
+
+.portal-tab-active {
+  background: #082f49;
+  color: white;
+  box-shadow: 0 10px 24px rgba(8, 47, 73, 0.18);
+}
+
+.alphabet-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.alphabet-chip {
+  min-width: 2.5rem;
+  border: 1px solid #d7e0e8;
+  border-radius: 0.8rem;
+  background: white;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.55rem 0.7rem;
+}
+
+.alphabet-chip-active {
+  border-color: #0369a1;
+  background: #eef9ff;
+  color: #0369a1;
+}
+
+.portal-list-row {
+  display: grid;
+  gap: 1.5rem;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 1.75rem;
+  background: white;
+  padding: 1.25rem;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.portal-list-row:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+}
+
+.login-card {
+  position: relative;
+}
+
+.login-preview-cover {
+  height: 9rem;
+  border-radius: 1.25rem;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12);
+}
+
+.login-preview-1 {
+  background: linear-gradient(145deg, #082f49, #0369a1 58%, #38bdf8);
+}
+
+.login-preview-2 {
+  background: linear-gradient(145deg, #312e81, #7c3aed 58%, #c084fc);
+}
+
+.login-preview-3 {
+  background: linear-gradient(145deg, #134e4a, #0f766e 58%, #5eead4);
+}
+
+@media (min-width: 768px) {
+  .portal-list-row {
+    grid-template-columns: 10rem minmax(0, 1fr) auto;
+    padding: 1.5rem;
+  }
 }
 
 .reader-text mark,
