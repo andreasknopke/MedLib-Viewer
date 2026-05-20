@@ -85,3 +85,29 @@ def debug_users(db: Session = Depends(get_db)) -> dict:
         "count": len(users),
         "users": [{"email": u.email, "role": u.role.value, "is_active": u.is_active} for u in users],
     }
+
+
+@app.post("/api/debug/create-root-admin")
+def debug_create_root_admin(db: Session = Depends(get_db)) -> dict:
+    """Manually trigger root admin creation from ENV vars."""
+    from app.models import User
+    from app.security import hash_password
+
+    if not settings.root_admin_email or not settings.root_admin_password:
+        return {"error": "ROOT_ADMIN_EMAIL or ROOT_ADMIN_PASSWORD not set"}
+
+    email = settings.root_admin_email.lower().strip()
+    existing = db.scalar(select(User).where(User.email == email))
+    if existing:
+        return {"status": "already_exists", "email": existing.email, "role": existing.role.value}
+
+    user = User(
+        email=email,
+        full_name=settings.root_admin_full_name,
+        hashed_password=hash_password(settings.root_admin_password),
+        role="admin",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    return {"status": "created", "email": email}
