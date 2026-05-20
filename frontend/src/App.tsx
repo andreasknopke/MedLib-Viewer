@@ -1,7 +1,41 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, BookOpen, Building2, ChevronRight, Database, Download, FileUp, FolderTree, Library, LogOut, Search, ShieldCheck, Sparkles, Star, Users } from 'lucide-react'
+import {
+  Activity,
+  BookOpen,
+  Building2,
+  ChevronRight,
+  Database,
+  Download,
+  FileUp,
+  FolderTree,
+  Library,
+  LogOut,
+  Search,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Users,
+} from 'lucide-react'
 import { api } from './api'
-import type { Book, Bookmark, Category, Clinic, DashboardJob, DashboardMetric, DashboardOverview, Department, Highlight, Note, PageText, Placement, Role, SearchHit, User, UserWorkspace } from './types'
+import type {
+  Book,
+  Bookmark,
+  Category,
+  Clinic,
+  DashboardJob,
+  DashboardMetric,
+  DashboardOverview,
+  Department,
+  Highlight,
+  Note,
+  PageText,
+  Placement,
+  Role,
+  SearchHit,
+  User,
+  UserWorkspace,
+} from './types'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -15,10 +49,13 @@ function App() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.me().then((loadedUser) => {
-      setUser(loadedUser)
-      return Promise.all([loadBooks(), loadDashboard(), loadWorkspace()])
-    }).catch(() => undefined)
+    api
+      .me()
+      .then((loadedUser) => {
+        setUser(loadedUser)
+        return Promise.all([loadBooks(), loadDashboard(), loadWorkspace()])
+      })
+      .catch(() => undefined)
   }, [])
 
   async function loadBooks() {
@@ -53,141 +90,252 @@ function App() {
     return <Login onLogin={setUser} error={error} setError={setError} />
   }
 
+  const canAdmin = user.role === 'admin' || user.role === 'librarian'
+
   return (
-    <div className="min-h-screen text-slate-900">
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-3 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-gradient-to-br from-clinic-950 to-clinic-500 p-3 text-white shadow-lg shadow-sky-900/20">
-              <Library className="h-6 w-6" />
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside className="sidebar hidden lg:flex lg:flex-col">
+          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
+              <Library className="h-4 w-4" />
             </div>
-            <div>
-              <p className="portal-eyebrow">Klinikportal</p>
-              <h1 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">MedLib Fachbibliothek</h1>
+            <div className="leading-tight">
+              <p className="text-sm font-semibold text-slate-900">MedLib</p>
+              <p className="text-[11px] text-slate-500">Klinikbibliothek</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm text-slate-600">
-            {(user.role === 'admin' || user.role === 'librarian') && (
-              <button onClick={() => { setActiveView(activeView === 'library' ? 'admin' : 'library'); setSelectedBook(null); }} className="font-semibold text-clinic-700 hover:text-clinic-900 border border-clinic-300 rounded-full px-4 py-2 hover:bg-clinic-50 transition">
-                {activeView === 'library' ? 'Zentrale Verwaltung' : 'Zur Bibliothek'}
+          <nav className="flex flex-1 flex-col gap-1 p-3">
+            <button
+              type="button"
+              className={`nav-item ${activeView === 'library' ? 'nav-item-active' : ''}`}
+              onClick={() => {
+                setActiveView('library')
+                setSelectedBook(null)
+              }}
+            >
+              <BookOpen className="h-4 w-4" /> Bibliothek
+            </button>
+            {canAdmin && (
+              <button
+                type="button"
+                className={`nav-item ${activeView === 'admin' ? 'nav-item-active' : ''}`}
+                onClick={() => {
+                  setActiveView('admin')
+                  setSelectedBook(null)
+                }}
+              >
+                <Settings className="h-4 w-4" /> Verwaltung
               </button>
             )}
-            <span className="hidden rounded-full bg-clinic-50 px-4 py-2 font-semibold text-clinic-950 sm:inline-flex">{user.full_name} · {user.role}</span>
-            <button className="btn-secondary flex items-center gap-2" onClick={() => { api.logout(); setUser(null) }}>
-              <LogOut className="h-4 w-4" /> Logout
+            <div className="my-2 border-t border-slate-100" />
+            <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Konto
+            </p>
+            <div className="px-3 py-2 text-xs leading-tight">
+              <p className="font-medium text-slate-900">{user.full_name}</p>
+              <p className="text-slate-500">{user.email}</p>
+              <span className="badge badge-indigo mt-2">{user.role}</span>
+            </div>
+            <button
+              type="button"
+              className="nav-item mt-auto"
+              onClick={() => {
+                api.logout()
+                setUser(null)
+              }}
+            >
+              <LogOut className="h-4 w-4" /> Abmelden
             </button>
-          </div>
-        </div>
-      </header>
+          </nav>
+        </aside>
 
-      {activeView === 'library' ? (
-        <LibraryHome
-          user={user}
-          books={books}
-          workspace={workspace}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          searchHits={searchHits}
-          selectedBook={selectedBook}
-          onRunSearch={runSearch}
-          onSelectBook={setSelectedBook}
-          onSaveBook={saveToWorkspace}
-        />
-      ) : (
-        <main className="mx-auto grid max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[380px_minmax(0,1fr)] lg:px-8">
-          <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-            <section className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-clinic-950 via-clinic-700 to-sky-500 p-6 text-white shadow-portal">
-              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.25em] text-sky-100">
-                <Sparkles className="h-4 w-4" /> Administration
+        <div className="flex min-h-screen flex-col">
+          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
+              <div className="flex items-center gap-2 lg:hidden">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
+                  <Library className="h-4 w-4" />
+                </div>
+                <span className="text-sm font-semibold text-slate-900">MedLib</span>
               </div>
-              <h2 className="mt-4 text-3xl font-black leading-tight">Zentrale Verwaltung der Bibliothek.</h2>
-              <p className="mt-3 text-sm leading-6 text-sky-100">Uploads, OCR-Prozesse, Zuordnung und Benutzerverwaltung liegen bewusst getrennt von der eigentlichen Bibliothek.</p>
-            </section>
-            <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
-            <Stats books={books} />
-            <AccountPanel currentUser={user} onUserChanged={setUser} />
-          </aside>
+              <div className="hidden lg:block">
+                <h1 className="text-sm font-semibold text-slate-900">
+                  {activeView === 'library' ? 'Bibliothek' : 'Verwaltung'}
+                </h1>
+                <p className="text-xs text-slate-500">
+                  {activeView === 'library'
+                    ? 'Bestand durchsuchen, lesen und sammeln'
+                    : 'Uploads, Struktur und Benutzer verwalten'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {canAdmin && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary lg:hidden"
+                    onClick={() => {
+                      setActiveView(activeView === 'library' ? 'admin' : 'library')
+                      setSelectedBook(null)
+                    }}
+                  >
+                    {activeView === 'library' ? 'Verwaltung' : 'Bibliothek'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost lg:hidden"
+                  onClick={() => {
+                    api.logout()
+                    setUser(null)
+                  }}
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </header>
 
-          <section className="space-y-6">
-            <UploadPanel onUploaded={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
-            <TaxonomyPanel books={books} onChanged={async () => { await Promise.all([loadBooks(), loadDashboard()]) }} />
-            <UserManagementPanel currentUser={user} />
-          </section>
-        </main>
-      )}
+          <main className="flex-1 px-4 py-5 lg:px-6 lg:py-6">
+            {activeView === 'library' ? (
+              <LibraryHome
+                user={user}
+                books={books}
+                workspace={workspace}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                searchHits={searchHits}
+                selectedBook={selectedBook}
+                onRunSearch={runSearch}
+                onSelectBook={setSelectedBook}
+                onSaveBook={saveToWorkspace}
+              />
+            ) : (
+              <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)]">
+                <div className="space-y-5">
+                  <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
+                  <Stats books={books} />
+                  <AccountPanel currentUser={user} onUserChanged={setUser} />
+                </div>
+                <div className="space-y-5">
+                  <UploadPanel
+                    onUploaded={async () => {
+                      await Promise.all([loadBooks(), loadDashboard()])
+                    }}
+                  />
+                  <TaxonomyPanel
+                    books={books}
+                    onChanged={async () => {
+                      await Promise.all([loadBooks(), loadDashboard()])
+                    }}
+                  />
+                  <UserManagementPanel currentUser={user} />
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
     </div>
   )
 }
 
-function LibraryHome({ user, books, workspace, searchQuery, setSearchQuery, searchHits, selectedBook, onRunSearch, onSelectBook, onSaveBook }: { user: User; books: Book[]; workspace: UserWorkspace | null; searchQuery: string; setSearchQuery: (value: string) => void; searchHits: SearchHit[]; selectedBook: Book | null; onRunSearch: () => Promise<void>; onSelectBook: (book: Book | null) => void; onSaveBook: (book: Book) => Promise<void> }) {
-  const featuredBooks = useMemo(() => [...books].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()).slice(0, 6), [books])
+function LibraryHome({
+  user,
+  books,
+  workspace,
+  searchQuery,
+  setSearchQuery,
+  searchHits,
+  selectedBook,
+  onRunSearch,
+  onSelectBook,
+  onSaveBook,
+}: {
+  user: User
+  books: Book[]
+  workspace: UserWorkspace | null
+  searchQuery: string
+  setSearchQuery: (value: string) => void
+  searchHits: SearchHit[]
+  selectedBook: Book | null
+  onRunSearch: () => Promise<void>
+  onSelectBook: (book: Book | null) => void
+  onSaveBook: (book: Book) => Promise<void>
+}) {
+  const featuredBooks = useMemo(
+    () =>
+      [...books]
+        .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+        .slice(0, 6),
+    [books],
+  )
   const topSpecialties = useMemo(() => {
     const counts = new Map<string, number>()
     books.forEach((book) => {
       const specialty = book.specialty?.trim() || 'Allgemeinmedizin'
       counts.set(specialty, (counts.get(specialty) ?? 0) + 1)
     })
-    return [...counts.entries()].sort((left, right) => right[1] - left[1]).slice(0, 5)
+    return [...counts.entries()].sort((left, right) => right[1] - left[1]).slice(0, 6)
   }, [books])
 
   return (
-    <main className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6 lg:px-8">
-      <section className="portal-card relative overflow-hidden p-6 md:p-8 xl:p-10">
-        <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[32rem] bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.18),_transparent_58%)] xl:block" />
-        <div className="relative grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
-          <div>
-            <p className="portal-eyebrow">Digitale Bibliothek</p>
-            <h2 className="mt-3 max-w-4xl text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Willkommen zurück, {user.full_name.split(' ')[0]}. Hier startet die Bibliothek – nicht die Verwaltung.</h2>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">Durchsuche den Bestand wie in einem modernen Fachportal: mit Titelvorschauen, Regalansicht, Sortierung und direktem Zugriff auf relevante Literatur für den Klinikalltag.</p>
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+          Willkommen, {user.full_name.split(' ')[0]}
+        </h2>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Durchsuche die Fachbibliothek und lege Titel in deiner persönlichen Merkliste ab.
+        </p>
+      </div>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              {topSpecialties.map(([specialty, count]) => (
-                <span key={specialty} className="rounded-full border border-sky-100 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800">{specialty} · {count}</span>
-              ))}
-            </div>
-
-            <div className="mt-8 flex flex-col gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50/90 p-3 sm:flex-row">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-3.5 h-5 w-5 text-clinic-700" />
-                <input className="form-control border-white bg-white py-3.5 pl-12" placeholder="Diagnose, Fachgebiet, Autor:in, ISBN oder Therapie suchen …" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void onRunSearch()} />
-              </div>
-              <button className="btn-primary sm:min-w-40" onClick={() => void onRunSearch()}>Suche starten</button>
-            </div>
+      <div className="card">
+        <div className="card-body flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              className="form-control h-10 pl-9"
+              placeholder="Titel, Autor:in, Fachgebiet, ISBN, Volltext …"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && void onRunSearch()}
+            />
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white shadow-xl">
-              <p className="text-xs uppercase tracking-[0.25em] text-sky-200">Bestand</p>
-              <p className="mt-3 text-4xl font-black">{books.length}</p>
-              <p className="text-sm text-slate-300">Bücher & Journale im Portal</p>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Meine Sammlung</p>
-              <p className="mt-3 text-3xl font-black text-slate-950">{workspace?.saved_media.length ?? 0}</p>
-              <p className="text-sm text-slate-500">gemerkte Titel</p>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Merkhilfen</p>
-              <p className="mt-3 text-3xl font-black text-slate-950">{(workspace?.bookmarks.length ?? 0) + (workspace?.notes.length ?? 0)}</p>
-              <p className="text-sm text-slate-500">Bookmarks & Notizen</p>
-            </div>
-          </div>
+          <button className="btn btn-primary sm:w-32" onClick={() => void onRunSearch()}>
+            Suchen
+          </button>
         </div>
-      </section>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Bestand" value={books.length} hint="Bücher & Journale" />
+        <StatTile label="Meine Sammlung" value={workspace?.saved_media.length ?? 0} hint="gemerkte Titel" />
+        <StatTile
+          label="Lesezeichen"
+          value={workspace?.bookmarks.length ?? 0}
+          hint="Bookmarks gesamt"
+        />
+        <StatTile label="Notizen" value={workspace?.notes.length ?? 0} hint="persönliche Notizen" />
+      </div>
+
+      {topSpecialties.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {topSpecialties.map(([specialty, count]) => (
+            <span key={specialty} className="badge badge-slate">
+              {specialty} · {count}
+            </span>
+          ))}
+        </div>
+      )}
 
       {!selectedBook && <FeaturedShelf books={featuredBooks} onSelectBook={(book) => onSelectBook(book)} />}
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-6 xl:sticky xl:top-24 xl:self-start">
-          <section className="portal-card p-6">
-            <p className="portal-eyebrow">Benutzerbereich</p>
-            <h3 className="mt-3 text-2xl font-black text-slate-950">Meine Bibliothek</h3>
-            <p className="mt-3 text-sm leading-6 text-slate-600">Merkliste, Bookmarks und Notizen bleiben erreichbar, ohne die Bibliothek mit Administrationsformularen zu überladen.</p>
-          </section>
+      <div className="grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside className="space-y-5">
           <WorkspacePanel workspace={workspace} onSelectBook={(book) => onSelectBook(book)} />
         </aside>
-
-        <section className="space-y-6">
+        <section>
           {selectedBook ? (
             <Reader book={selectedBook} query={searchQuery} onBack={() => onSelectBook(null)} onSave={onSaveBook} />
           ) : (
@@ -195,79 +343,153 @@ function LibraryHome({ user, books, workspace, searchQuery, setSearchQuery, sear
           )}
         </section>
       </div>
-    </main>
+    </div>
+  )
+}
+
+function StatTile({ label, value, hint }: { label: string; value: number; hint?: string }) {
+  return (
+    <div className="card">
+      <div className="card-body py-3.5">
+        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{value}</p>
+        {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+      </div>
+    </div>
   )
 }
 
 function FeaturedShelf({ books, onSelectBook }: { books: Book[]; onSelectBook: (book: Book) => void }) {
-  if (!books.length) return null
-
   return (
-    <section className="library-shelf mt-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm md:p-6">
-      <div className="mb-5 flex items-center justify-between gap-4">
+    <section className="card">
+      <div className="card-header flex items-center justify-between">
         <div>
-          <p className="portal-eyebrow">Neu im Regal</p>
-          <h3 className="mt-2 text-2xl font-black text-slate-950">Titelvorschau mit direktem Einstieg</h3>
+          <h3 className="card-title">Neu im Regal</h3>
+          <p className="card-description">Aktuell hinzugefügte Titel</p>
         </div>
-        <span className="hidden rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 sm:inline-flex">{books.length} aktuelle Zugänge</span>
+        {books.length > 0 && <span className="badge badge-slate">{books.length}</span>}
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {books.map((book) => (
-          <button key={book.id} className="featured-book text-left" onClick={() => onSelectBook(book)}>
-            <BookCover book={book} />
-            <div className="mt-3">
-              <p className="line-clamp-2 text-sm font-bold text-slate-950">{book.title}</p>
-              <p className="mt-1 text-xs text-slate-500">{book.authors || book.publisher || 'MedLib'}</p>
-            </div>
-          </button>
-        ))}
+      <div className="card-body pt-3">
+        <div className="shelf">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {books.length > 0
+              ? books.map((book) => (
+                  <button key={book.id} type="button" className="featured-tile" onClick={() => onSelectBook(book)}>
+                    <BookCover book={book} />
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-xs font-medium text-slate-900">{book.title}</p>
+                      <p className="line-clamp-1 text-[11px] text-slate-500">
+                        {book.authors || book.publisher || 'MedLib'}
+                      </p>
+                    </div>
+                  </button>
+                ))
+              : Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="featured-tile">
+                    <EmptyCover />
+                    <div>
+                      <div className="h-3 w-3/4 rounded bg-slate-200" />
+                      <div className="mt-1 h-2 w-1/2 rounded bg-slate-100" />
+                    </div>
+                  </div>
+                ))}
+          </div>
+          {books.length === 0 && (
+            <p className="mt-4 text-center text-xs text-slate-500">
+              Noch keine Titel im Bestand – Uploads erscheinen hier automatisch.
+            </p>
+          )}
+        </div>
       </div>
     </section>
   )
 }
 
-function WorkspacePanel({ workspace, onSelectBook }: { workspace: UserWorkspace | null; onSelectBook: (book: Book) => void }) {
-  if (!workspace) return null
+function WorkspacePanel({
+  workspace,
+  onSelectBook,
+}: {
+  workspace: UserWorkspace | null
+  onSelectBook: (book: Book) => void
+}) {
+  if (!workspace) {
+    return (
+      <section className="card">
+        <div className="card-body">
+          <p className="muted">Persönlicher Bereich wird geladen …</p>
+        </div>
+      </section>
+    )
+  }
+
   return (
-    <section className="portal-card grid gap-6 p-6">
-      <div>
-        <div className="mb-3 flex items-center gap-2"><Star className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Meine Sammlung</h3></div>
-        <div className="space-y-2">
-          {workspace.saved_media.slice(0, 6).map((entry) => (
-            <button key={entry.id} className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 p-3 text-left text-sm hover:bg-slate-100 transition" onClick={() => onSelectBook(entry.book)}>
-              <BookCover book={entry.book} compact />
-              <span><span className="line-clamp-2 font-bold text-slate-900">{entry.book.title}</span><span className="block text-slate-500">{entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span></span>
-            </button>
-          ))}
-          {!workspace.saved_media.length && <p className="text-sm text-slate-500">Noch keine ausgewählten Medien.</p>}
-        </div>
+    <section className="card">
+      <div className="card-header">
+        <h3 className="card-title flex items-center gap-2">
+          <Star className="h-4 w-4 text-indigo-600" /> Mein Bereich
+        </h3>
+        <p className="card-description">Merkliste, Lesezeichen und Notizen</p>
       </div>
-      <div className="border-t border-slate-100 pt-5">
-        <h3 className="mb-3 font-bold">Meine Bookmarks</h3>
-        <div className="space-y-2">
-          {workspace.bookmarks.slice(0, 6).map((bookmark) => (
-            <div key={bookmark.id} className="rounded-2xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{bookmark.book_title}</p><p className="text-slate-500">Seite {bookmark.page_number} · {bookmark.label || 'Lesezeichen'}</p></div>
-          ))}
-          {!workspace.bookmarks.length && <p className="text-sm text-slate-500">Noch keine Bookmarks.</p>}
+      <div className="card-body space-y-4 pt-3">
+        <div>
+          <p className="eyebrow mb-2">Merkliste</p>
+          <div className="space-y-1.5">
+            {workspace.saved_media.slice(0, 5).map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs hover:border-slate-200 hover:bg-slate-50"
+                onClick={() => onSelectBook(entry.book)}
+              >
+                <BookCover book={entry.book} compact />
+                <span className="min-w-0">
+                  <span className="line-clamp-2 font-medium text-slate-900">{entry.book.title}</span>
+                  <span className="block text-[11px] text-slate-500">
+                    {entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}
+                  </span>
+                </span>
+              </button>
+            ))}
+            {!workspace.saved_media.length && <p className="muted">Noch keine gemerkten Titel.</p>}
+          </div>
         </div>
-      </div>
-      <div className="border-t border-slate-100 pt-5">
-        <h3 className="mb-3 font-bold">Meine Notizen</h3>
-        <div className="space-y-2">
-          {workspace.notes.slice(0, 6).map((note) => (
-            <div key={note.id} className="rounded-2xl bg-slate-50 p-3 text-sm"><p className="font-semibold">{note.book_title}</p><p className="line-clamp-2 text-slate-600">{note.body}</p></div>
-          ))}
-          {!workspace.notes.length && <p className="text-sm text-slate-500">Noch keine Notizen.</p>}
+        <div className="border-t border-slate-100 pt-4">
+          <p className="eyebrow mb-2">Bookmarks</p>
+          <div className="space-y-1.5">
+            {workspace.bookmarks.slice(0, 4).map((bookmark) => (
+              <div key={bookmark.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
+                <p className="font-medium text-slate-900">{bookmark.book_title}</p>
+                <p className="text-slate-500">
+                  Seite {bookmark.page_number} · {bookmark.label || 'Lesezeichen'}
+                </p>
+              </div>
+            ))}
+            {!workspace.bookmarks.length && <p className="muted">Noch keine Bookmarks.</p>}
+          </div>
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <p className="eyebrow mb-2">Notizen</p>
+          <div className="space-y-1.5">
+            {workspace.notes.slice(0, 4).map((note) => (
+              <div key={note.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
+                <p className="font-medium text-slate-900">{note.book_title}</p>
+                <p className="line-clamp-2 text-slate-500">{note.body}</p>
+              </div>
+            ))}
+            {!workspace.notes.length && <p className="muted">Noch keine Notizen.</p>}
+          </div>
         </div>
       </div>
     </section>
   )
 }
+
+/* ============================== Admin panels ============================== */
 
 function formatMetricValue(metric: DashboardMetric) {
   if (metric.key === 'storage_bytes') {
-    const gigaBytes = metric.value / (1024 ** 3)
-    return gigaBytes >= 1 ? `${gigaBytes.toFixed(2)} GB` : `${(metric.value / (1024 ** 2)).toFixed(1)} MB`
+    const gigaBytes = metric.value / 1024 ** 3
+    return gigaBytes >= 1 ? `${gigaBytes.toFixed(2)} GB` : `${(metric.value / 1024 ** 2).toFixed(1)} MB`
   }
   return new Intl.NumberFormat('de-DE').format(metric.value)
 }
@@ -277,11 +499,24 @@ function jobStatusLabel(status: DashboardJob['status']) {
     pending: 'Ausstehend',
     running: 'Läuft',
     completed: 'Fertig',
-    failed: 'Fehler'
+    failed: 'Fehler',
   }[status]
 }
 
-function DashboardPanel({ dashboard, onRefresh }: { dashboard: DashboardOverview | null; onRefresh: () => Promise<void> }) {
+function jobStatusBadge(status: DashboardJob['status']) {
+  if (status === 'completed') return 'badge badge-emerald'
+  if (status === 'failed') return 'badge badge-rose'
+  if (status === 'running') return 'badge badge-amber'
+  return 'badge badge-slate'
+}
+
+function DashboardPanel({
+  dashboard,
+  onRefresh,
+}: {
+  dashboard: DashboardOverview | null
+  onRefresh: () => Promise<void>
+}) {
   const [refreshing, setRefreshing] = useState(false)
 
   async function refresh() {
@@ -294,111 +529,156 @@ function DashboardPanel({ dashboard, onRefresh }: { dashboard: DashboardOverview
   }
 
   if (!dashboard) {
-    return <section className="portal-card p-6"><p className="text-sm text-slate-500">Dashboard wird geladen …</p></section>
+    return (
+      <section className="card">
+        <div className="card-body">
+          <p className="muted">Dashboard wird geladen …</p>
+        </div>
+      </section>
+    )
   }
 
   return (
-    <section className="portal-card space-y-6 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="card">
+      <div className="card-header flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-clinic-700">Operations</p>
-          <h2 className="text-2xl font-bold text-slate-950">Dashboard</h2>
+          <h3 className="card-title">Operations</h3>
+          <p className="card-description">Kennzahlen und OCR-Pipeline</p>
         </div>
-        <button className="btn-secondary" onClick={refresh}>{refreshing ? 'Aktualisiere …' : 'Aktualisieren'}</button>
+        <button className="btn btn-sm btn-secondary" onClick={refresh}>
+          {refreshing ? 'Aktualisiere …' : 'Aktualisieren'}
+        </button>
       </div>
+      <div className="card-body space-y-4 pt-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {dashboard.metrics.map((metric) => (
+            <div key={metric.key} className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
+              <p className="mt-1 text-lg font-semibold text-slate-900">{formatMetricValue(metric)}</p>
+            </div>
+          ))}
+        </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dashboard.metrics.map((metric) => (
-          <div key={metric.key} className="rounded-2xl bg-slate-50 p-5">
-            <p className="text-xs uppercase tracking-wide text-slate-500">{metric.label}</p>
-            <p className="mt-3 text-3xl font-bold text-slate-950">{formatMetricValue(metric)}</p>
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-indigo-600" />
+            <h4 className="text-sm font-semibold text-slate-900">OCR-Jobs</h4>
           </div>
-        ))}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
-        <section className="rounded-2xl border border-slate-200 p-5">
-          <div className="mb-4 flex items-center gap-2"><Activity className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">OCR-Jobs</h3></div>
-          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Object.entries(dashboard.job_status_counts).map(([status, count]) => (
-              <div key={status} className="rounded-2xl bg-slate-50 p-3 text-center">
-                <p className="text-xs uppercase tracking-wide text-slate-500">{jobStatusLabel(status as DashboardJob['status'])}</p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">{count}</p>
+              <div key={status} className="rounded-md bg-slate-50 px-2.5 py-2 text-center">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                  {jobStatusLabel(status as DashboardJob['status'])}
+                </p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{count}</p>
               </div>
             ))}
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {dashboard.recent_jobs.map((job) => (
-              <div key={job.id} className="rounded-2xl bg-slate-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">{job.book_title}</p>
-                    <p className="text-sm text-slate-500">{job.message || 'OCR-Job ohne Zusatzmeldung'}</p>
+              <div key={job.id} className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900">{job.book_title}</p>
+                    <p className="truncate text-slate-500">{job.message || 'OCR-Job ohne Zusatzmeldung'}</p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${job.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : job.status === 'failed' ? 'bg-rose-50 text-rose-700' : job.status === 'running' ? 'bg-amber-50 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>{jobStatusLabel(job.status)}</span>
+                  <span className={jobStatusBadge(job.status)}>{jobStatusLabel(job.status)}</span>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${job.status === 'failed' ? 'bg-rose-500' : 'bg-clinic-700'}`} style={{ width: `${job.progress}%` }} /></div>
-                <div className="mt-2 flex justify-between text-xs text-slate-500"><span>{job.progress}%</span><span>{new Date(job.updated_at).toLocaleString('de-DE')}</span></div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full ${job.status === 'failed' ? 'bg-rose-500' : 'bg-indigo-600'}`}
+                    style={{ width: `${job.progress}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+                  <span>{job.progress}%</span>
+                  <span>{new Date(job.updated_at).toLocaleString('de-DE')}</span>
+                </div>
               </div>
             ))}
           </div>
-        </section>
+        </div>
 
-        <section className="rounded-2xl border border-slate-200 p-5">
-          <div className="mb-4 flex items-center gap-2"><Database className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Datenbank-Stats</h3></div>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <div className="border-t border-slate-100 pt-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Database className="h-4 w-4 text-indigo-600" />
+            <h4 className="text-sm font-semibold text-slate-900">Datenbank</h4>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
             {dashboard.records_by_table.map((metric) => (
-              <div key={metric.key} className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">{metric.label}</p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">{formatMetricValue(metric)}</p>
+              <div key={metric.key} className="rounded-md bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
+                <p className="mt-0.5 text-base font-semibold text-slate-900">{formatMetricValue(metric)}</p>
               </div>
             ))}
           </div>
-        </section>
-      </div>
+        </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-2xl border border-slate-200 p-5">
-          <div className="mb-4 flex items-center gap-2"><BookOpen className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Letzte Importe</h3></div>
-          <div className="space-y-3">
-            {dashboard.recent_imports.map((item) => (
-              <div key={item.book_id} className="rounded-2xl bg-slate-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">{item.title}</p>
-                    <p className="text-sm text-slate-500">{item.authors || item.source_filename}</p>
+        {dashboard.top_specialties.length > 0 && (
+          <div className="border-t border-slate-100 pt-4">
+            <div className="mb-2 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-600" />
+              <h4 className="text-sm font-semibold text-slate-900">Top-Fachgebiete</h4>
+            </div>
+            <div className="space-y-2">
+              {dashboard.top_specialties.map((entry) => (
+                <div key={entry.specialty}>
+                  <div className="mb-0.5 flex items-center justify-between text-xs text-slate-600">
+                    <span>{entry.specialty}</span>
+                    <span className="text-slate-400">{entry.count}</span>
                   </div>
-                  <div className="text-right text-sm text-slate-500">
-                    <p>{item.page_count} Seiten</p>
-                    <p>{item.specialty || 'Ohne Fachgebiet'}</p>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-indigo-500"
+                      style={{ width: `${Math.min(100, entry.count * 10)}%` }}
+                    />
                   </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                  <span>{item.ocr_status ? `${jobStatusLabel(item.ocr_status)} · ${item.ocr_progress ?? 0}%` : 'Noch kein OCR-Job'}</span>
-                  <span>{new Date(item.created_at).toLocaleString('de-DE')}</span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </section>
+        )}
 
-        <section className="rounded-2xl border border-slate-200 p-5">
-          <div className="mb-4 flex items-center gap-2"><Sparkles className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Bestand nach Fachgebiet</h3></div>
-          <div className="space-y-3">
-            {dashboard.top_specialties.map((entry) => (
-              <div key={entry.specialty}>
-                <div className="mb-1 flex items-center justify-between text-sm text-slate-600"><span>{entry.specialty}</span><span>{entry.count}</span></div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-clinic-700" style={{ width: `${Math.min(100, entry.count * 10)}%` }} /></div>
-              </div>
-            ))}
+        {dashboard.recent_imports.length > 0 && (
+          <div className="border-t border-slate-100 pt-4">
+            <div className="mb-2 flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-indigo-600" />
+              <h4 className="text-sm font-semibold text-slate-900">Letzte Importe</h4>
+            </div>
+            <div className="space-y-2">
+              {dashboard.recent_imports.map((item) => (
+                <div key={item.book_id} className="rounded-md bg-slate-50 px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-slate-900">{item.title}</p>
+                      <p className="truncate text-slate-500">{item.authors || item.source_filename}</p>
+                    </div>
+                    <div className="text-right text-[11px] text-slate-500">
+                      <p>{item.page_count} Seiten</p>
+                      <p>{item.specialty || 'ohne Fachgebiet'}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </section>
+        )}
       </div>
     </section>
   )
 }
 
-function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; error: string; setError: (value: string) => void }) {
+/* ============================== Login ============================== */
+
+function Login({
+  onLogin,
+  error,
+  setError,
+}: {
+  onLogin: (user: User) => void
+  error: string
+  setError: (value: string) => void
+}) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
@@ -412,73 +692,112 @@ function Login({ onLogin, error, setError }: { onLogin: (user: User) => void; er
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(8,47,73,0.18),_transparent_28%)]" />
-      <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_440px]">
-        <section className="hidden lg:block lg:pr-8">
-          <p className="portal-eyebrow">Klinikportal</p>
-          <h1 className="mt-4 max-w-2xl text-6xl font-black leading-[1.02] text-slate-950">Fachwissen, das sich wie eine moderne Bibliothek anfühlt.</h1>
-          <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">Volltextsuche, Merklisten und kuratierter Zugriff auf medizinische Literatur – in einer Oberfläche, die eher nach Fachportal als nach Verwaltungsmaske aussieht.</p>
-          <div className="mt-10 grid max-w-3xl gap-5 sm:grid-cols-3">
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
+      <div className="grid w-full max-w-5xl items-center gap-10 lg:grid-cols-2">
+        <div className="hidden lg:block">
+          <div className="mb-5 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-indigo-600 text-white">
+              <Library className="h-5 w-5" />
+            </div>
+            <span className="text-base font-semibold text-slate-900">MedLib</span>
+          </div>
+          <h1 className="text-3xl font-semibold leading-tight tracking-tight text-slate-900">
+            Die zentrale Fachbibliothek für deine Klinik.
+          </h1>
+          <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">
+            Lehrbücher, Journale und kuratierte Literatur an einem Ort. Mit Volltextsuche, persönlicher Merkliste
+            und einfacher Verwaltung.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
             {[
-              ['Journals', 'Aktuelle Ausgaben und Reihen'],
-              ['Bücher', 'Lehrbücher und Standardwerke'],
-              ['OCR-Suche', 'Kapitel und Inhalte sekundenschnell finden']
-            ].map(([title, description], index) => (
-              <div key={title} className="login-preview-card">
-                <div className={`login-preview-cover login-preview-${index + 1}`} />
-                <h3 className="mt-4 text-lg font-black text-slate-950">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+              ['Bücher', 'Standardwerke & Lehrbücher'],
+              ['Journals', 'Aktuelle Reihen & Ausgaben'],
+              ['OCR-Suche', 'Volltext sekundenschnell'],
+            ].map(([title, description]) => (
+              <div key={title} className="card">
+                <div className="card-body py-3">
+                  <p className="text-sm font-medium text-slate-900">{title}</p>
+                  <p className="mt-1 text-xs text-slate-500">{description}</p>
+                </div>
               </div>
             ))}
           </div>
-        </section>
+        </div>
 
-        <section className="login-card login-shell mx-auto w-full max-w-[30rem] justify-self-center rounded-[2rem] p-7 sm:p-9">
-          <div className="mb-8 flex items-center gap-4">
-            <div className="rounded-[1.25rem] bg-gradient-to-br from-clinic-950 to-clinic-500 p-3 text-white shadow-lg shadow-sky-900/20"><ShieldCheck className="h-6 w-6" /></div>
+        <div className="login-card mx-auto w-full max-w-md">
+          <div className="mb-5 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
             <div>
-              <p className="portal-eyebrow">MedLib</p>
-              <h2 className="text-3xl font-black tracking-tight text-slate-950">Anmelden</h2>
+              <p className="eyebrow">Anmeldung</p>
+              <h2 className="text-base font-semibold text-slate-900">Bei MedLib einloggen</h2>
             </div>
           </div>
 
-          <div className="login-info mb-6 rounded-[1.25rem] p-4 text-sm leading-6 text-sky-900">
-            Zugriff auf die digitale Klinikbibliothek mit persönlicher Merkliste, Journals und Volltextsuche.
-          </div>
-
-          <div className="space-y-5">
+          <div className="space-y-3">
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">E-Mail</label>
-              <input className="form-control" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="name@klinik.de" />
+              <label className="mb-1 block text-xs font-medium text-slate-700">E-Mail</label>
+              <input
+                className="form-control"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                placeholder="name@klinik.de"
+              />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Passwort</label>
-              <input className="form-control" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void submit()} autoComplete="current-password" placeholder="••••••••" />
+              <label className="mb-1 block text-xs font-medium text-slate-700">Passwort</label>
+              <input
+                className="form-control"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => event.key === 'Enter' && void submit()}
+                autoComplete="current-password"
+                placeholder="••••••••"
+              />
             </div>
           </div>
 
-          {error && <p className="mt-5 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+          {error && (
+            <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+              {error}
+            </p>
+          )}
 
-          <button className="btn-primary mt-6 flex w-full items-center justify-center gap-2 py-3.5" onClick={() => void submit()}>
+          <button className="btn btn-primary mt-5 w-full" onClick={() => void submit()}>
             Einloggen <ChevronRight className="h-4 w-4" />
           </button>
-          <p className="mt-5 text-center text-xs leading-5 text-slate-500">Zugang nur für berechtigte Nutzer:innen der Klinikbibliothek.</p>
-        </section>
+          <p className="mt-4 text-center text-[11px] text-slate-500">
+            Zugang nur für berechtigte Nutzer:innen der Klinikbibliothek.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
 
+/* ============================== Stats / Admin ============================== */
+
 function Stats({ books }: { books: Book[] }) {
   const pageCount = books.reduce((sum, book) => sum + book.page_count, 0)
   const specialties = new Set(books.map((book) => book.specialty).filter(Boolean)).size
   return (
-    <div className="portal-panel grid grid-cols-3 gap-3">
-      {[['Bücher', books.length], ['Seiten', pageCount], ['Fächer', specialties]].map(([label, value]) => (
-        <div key={label} className="rounded-2xl bg-slate-50 p-4 text-center"><p className="text-2xl font-bold text-slate-950">{value}</p><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p></div>
-      ))}
-    </div>
+    <section className="card">
+      <div className="card-body grid grid-cols-3 gap-2 py-3">
+        {[
+          ['Bücher', books.length],
+          ['Seiten', pageCount],
+          ['Fächer', specialties],
+        ].map(([label, value]) => (
+          <div key={label as string} className="rounded-md bg-slate-50 px-3 py-2 text-center">
+            <p className="text-lg font-semibold text-slate-900">{value}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -496,17 +815,40 @@ function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
     }
   }
   return (
-    <form className="portal-panel space-y-3" onSubmit={submit}>
-      <h3 className="flex items-center gap-2 font-bold"><FileUp className="h-5 w-5 text-clinic-700" /> Neues Fachbuch</h3>
-      <input name="title" required className="form-control" placeholder="Titel" />
-      <input name="authors" className="form-control" placeholder="Autor:innen" />
-      <input name="publisher" className="form-control" placeholder="Verlag" />
-      <select name="media_type" className="form-control" defaultValue="book"><option value="book">Buch</option><option value="journal">Zeitschrift</option></select>
-      <div className="grid grid-cols-2 gap-2"><input name="year" type="number" className="form-control" placeholder="Jahr" /><input name="specialty" className="form-control" placeholder="Fachgebiet" /></div>
-      <input name="tags" className="form-control" placeholder="Tags, kommagetrennt" />
-      <input name="file" type="file" accept="application/pdf" required className="form-control bg-slate-50 text-sm" />
-      <button disabled={busy} className="btn-primary w-full">{busy ? 'OCR wird vorbereitet …' : 'Hochladen & OCR starten'}</button>
-    </form>
+    <section className="card">
+      <div className="card-header">
+        <h3 className="card-title flex items-center gap-2">
+          <FileUp className="h-4 w-4 text-indigo-600" /> Neues Medium
+        </h3>
+        <p className="card-description">Datei wird hochgeladen und der OCR-Job gestartet</p>
+      </div>
+      <form className="card-body space-y-2.5 pt-3" onSubmit={submit}>
+        <input name="title" required className="form-control" placeholder="Titel" />
+        <div className="grid grid-cols-2 gap-2">
+          <input name="authors" className="form-control" placeholder="Autor:innen" />
+          <input name="publisher" className="form-control" placeholder="Verlag" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <select name="media_type" className="form-control" defaultValue="book">
+            <option value="book">Buch</option>
+            <option value="journal">Zeitschrift</option>
+          </select>
+          <input name="year" type="number" className="form-control" placeholder="Jahr" />
+          <input name="specialty" className="form-control" placeholder="Fachgebiet" />
+        </div>
+        <input name="tags" className="form-control" placeholder="Tags, kommagetrennt" />
+        <input
+          name="file"
+          type="file"
+          accept="application/pdf"
+          required
+          className="form-control bg-slate-50 text-xs"
+        />
+        <button disabled={busy} className="btn btn-primary w-full">
+          {busy ? 'OCR wird vorbereitet …' : 'Hochladen & OCR starten'}
+        </button>
+      </form>
+    </section>
   )
 }
 
@@ -525,14 +867,21 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
   const [message, setMessage] = useState('')
 
   async function loadTaxonomy() {
-    const [clinicRows, departmentRows, categoryRows, placementRows] = await Promise.all([api.clinics(), api.departments(), api.categories(), api.placements()])
+    const [clinicRows, departmentRows, categoryRows, placementRows] = await Promise.all([
+      api.clinics(),
+      api.departments(),
+      api.categories(),
+      api.placements(),
+    ])
     setClinics(clinicRows)
     setDepartments(departmentRows)
     setCategories(categoryRows)
     setPlacements(placementRows)
   }
 
-  useEffect(() => { loadTaxonomy() }, [])
+  useEffect(() => {
+    loadTaxonomy()
+  }, [])
 
   const filteredDepartments = departments.filter((department) => !selectedClinic || department.clinic_id === selectedClinic)
   const filteredCategories = categories.filter((category) => !selectedDepartment || category.department_id === selectedDepartment)
@@ -560,36 +909,152 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
 
   async function assignMedia() {
     if (!selectedBook || !selectedClinic || !selectedDepartment) return
-    await api.createPlacement({ book_id: selectedBook, clinic_id: selectedClinic, department_id: selectedDepartment, category_id: selectedCategory || null })
+    await api.createPlacement({
+      book_id: selectedBook,
+      clinic_id: selectedClinic,
+      department_id: selectedDepartment,
+      category_id: selectedCategory || null,
+    })
     setMessage('Medium wurde einsortiert')
     await Promise.all([loadTaxonomy(), onChanged()])
   }
 
   return (
-    <section className="portal-panel space-y-4">
-      <div className="flex items-center gap-2"><FolderTree className="h-5 w-5 text-clinic-700" /><h3 className="font-bold">Struktur & Einsortierung</h3></div>
-      <div className="space-y-2">
-        <div className="flex gap-2"><input className="form-control min-w-0 flex-1" placeholder="Klinik" value={clinicName} onChange={(event) => setClinicName(event.target.value)} /><button className="btn-secondary px-4" onClick={addClinic}>+</button></div>
-        <select className="form-control" value={selectedClinic} onChange={(event) => { setSelectedClinic(event.target.value); setSelectedDepartment(''); setSelectedCategory('') }}><option value="">Klinik wählen</option>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select>
-        <div className="flex gap-2"><input className="form-control min-w-0 flex-1" placeholder="Fachbereich" value={departmentName} onChange={(event) => setDepartmentName(event.target.value)} /><button className="btn-secondary px-4" onClick={addDepartment}>+</button></div>
-        <select className="form-control" value={selectedDepartment} onChange={(event) => { setSelectedDepartment(event.target.value); setSelectedCategory('') }}><option value="">Fachbereich wählen</option>{filteredDepartments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
-        <div className="flex gap-2"><input className="form-control min-w-0 flex-1" placeholder="Kategorie" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} /><button className="btn-secondary px-4" onClick={addCategory}>+</button></div>
-        <select className="form-control" value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)}><option value="">Kategorie optional</option>{filteredCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+    <section className="card">
+      <div className="card-header">
+        <h3 className="card-title flex items-center gap-2">
+          <FolderTree className="h-4 w-4 text-indigo-600" /> Struktur & Einsortierung
+        </h3>
+        <p className="card-description">Kliniken, Fachbereiche und Kategorien organisieren</p>
       </div>
-      <div className="space-y-2 border-t pt-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700"><Building2 className="h-4 w-4" /> Medium einsortieren</div>
-        <select className="form-control" value={selectedBook} onChange={(event) => setSelectedBook(event.target.value)}><option value="">Buch/Zeitschrift wählen</option>{books.map((book) => <option key={book.id} value={book.id}>{book.title}</option>)}</select>
-        <button className="btn-primary w-full" onClick={assignMedia}>Zuordnen</button>
-        {message && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
-      </div>
-      <div className="max-h-44 space-y-2 overflow-auto border-t pt-4">
-        {placements.slice(0, 8).map((placement) => <p key={placement.id} className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{placement.clinic_name} / {placement.department_name}{placement.category_name ? ` / ${placement.category_name}` : ''}</p>)}
+      <div className="card-body space-y-3 pt-3">
+        <div className="grid gap-2">
+          <div className="flex gap-2">
+            <input
+              className="form-control flex-1"
+              placeholder="Klinik"
+              value={clinicName}
+              onChange={(event) => setClinicName(event.target.value)}
+            />
+            <button className="btn btn-sm btn-secondary" onClick={addClinic}>
+              +
+            </button>
+          </div>
+          <select
+            className="form-control"
+            value={selectedClinic}
+            onChange={(event) => {
+              setSelectedClinic(event.target.value)
+              setSelectedDepartment('')
+              setSelectedCategory('')
+            }}
+          >
+            <option value="">Klinik wählen</option>
+            {clinics.map((clinic) => (
+              <option key={clinic.id} value={clinic.id}>
+                {clinic.name}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <input
+              className="form-control flex-1"
+              placeholder="Fachbereich"
+              value={departmentName}
+              onChange={(event) => setDepartmentName(event.target.value)}
+            />
+            <button className="btn btn-sm btn-secondary" onClick={addDepartment}>
+              +
+            </button>
+          </div>
+          <select
+            className="form-control"
+            value={selectedDepartment}
+            onChange={(event) => {
+              setSelectedDepartment(event.target.value)
+              setSelectedCategory('')
+            }}
+          >
+            <option value="">Fachbereich wählen</option>
+            {filteredDepartments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <input
+              className="form-control flex-1"
+              placeholder="Kategorie"
+              value={categoryName}
+              onChange={(event) => setCategoryName(event.target.value)}
+            />
+            <button className="btn btn-sm btn-secondary" onClick={addCategory}>
+              +
+            </button>
+          </div>
+          <select
+            className="form-control"
+            value={selectedCategory}
+            onChange={(event) => setSelectedCategory(event.target.value)}
+          >
+            <option value="">Kategorie optional</option>
+            {filteredCategories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <p className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-700">
+            <Building2 className="h-3.5 w-3.5" /> Medium einsortieren
+          </p>
+          <select
+            className="form-control mb-2"
+            value={selectedBook}
+            onChange={(event) => setSelectedBook(event.target.value)}
+          >
+            <option value="">Buch / Zeitschrift wählen</option>
+            {books.map((book) => (
+              <option key={book.id} value={book.id}>
+                {book.title}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-primary w-full" onClick={assignMedia}>
+            Zuordnen
+          </button>
+          {message && (
+            <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">
+              {message}
+            </p>
+          )}
+        </div>
+
+        {placements.length > 0 && (
+          <div className="max-h-40 space-y-1 overflow-auto border-t border-slate-100 pt-3">
+            {placements.slice(0, 8).map((placement) => (
+              <p key={placement.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600">
+                {placement.clinic_name} / {placement.department_name}
+                {placement.category_name ? ` / ${placement.category_name}` : ''}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )
 }
 
-function AccountPanel({ currentUser, onUserChanged }: { currentUser: User; onUserChanged: (user: User) => void }) {
+function AccountPanel({
+  currentUser,
+  onUserChanged,
+}: {
+  currentUser: User
+  onUserChanged: (user: User) => void
+}) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -615,15 +1080,42 @@ function AccountPanel({ currentUser, onUserChanged }: { currentUser: User; onUse
   }
 
   return (
-    <form className="portal-panel space-y-3" onSubmit={submit}>
-      <h3 className="font-bold">Mein Zugang</h3>
-      <p className="text-sm text-slate-500">{currentUser.email}</p>
-      <input className="form-control" type="password" placeholder="Aktuelles Passwort" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
-      <input className="form-control" type="password" placeholder="Neues Passwort" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={10} required />
-      {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {message && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
-      <button disabled={busy} className="btn-secondary w-full">{busy ? 'Aktualisiere Passwort …' : 'Eigenes Passwort ändern'}</button>
-    </form>
+    <section className="card">
+      <div className="card-header">
+        <h3 className="card-title">Mein Zugang</h3>
+        <p className="card-description">{currentUser.email}</p>
+      </div>
+      <form className="card-body space-y-2.5 pt-3" onSubmit={submit}>
+        <input
+          className="form-control"
+          type="password"
+          placeholder="Aktuelles Passwort"
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+          required
+        />
+        <input
+          className="form-control"
+          type="password"
+          placeholder="Neues Passwort"
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+          minLength={10}
+          required
+        />
+        {error && (
+          <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-700">{error}</p>
+        )}
+        {message && (
+          <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">
+            {message}
+          </p>
+        )}
+        <button disabled={busy} className="btn btn-secondary w-full">
+          {busy ? 'Aktualisiere …' : 'Passwort ändern'}
+        </button>
+      </form>
+    </section>
   )
 }
 
@@ -639,7 +1131,7 @@ function UserManagementPanel({ currentUser }: { currentUser: User }) {
     email: '',
     full_name: '',
     password: '',
-    role: 'reader' as Role
+    role: 'reader' as Role,
   })
 
   async function loadUsers() {
@@ -658,7 +1150,7 @@ function UserManagementPanel({ currentUser }: { currentUser: User }) {
   }, [])
 
   function replaceUser(updatedUser: User) {
-    setUsers((currentUsers) => currentUsers.map((entry) => entry.id === updatedUser.id ? updatedUser : entry))
+    setUsers((currentUsers) => currentUsers.map((entry) => (entry.id === updatedUser.id ? updatedUser : entry)))
     setRoleDrafts((currentDrafts) => ({ ...currentDrafts, [updatedUser.id]: updatedUser.role }))
   }
 
@@ -679,9 +1171,8 @@ function UserManagementPanel({ currentUser }: { currentUser: User }) {
     }
   }
 
-  const creatableRoles: Role[] = currentUser.role === 'admin'
-    ? ['admin', 'librarian', 'clinician', 'reader']
-    : ['clinician', 'reader']
+  const creatableRoles: Role[] =
+    currentUser.role === 'admin' ? ['admin', 'librarian', 'clinician', 'reader'] : ['clinician', 'reader']
 
   async function toggleUserStatus(user: User) {
     setError('')
@@ -746,74 +1237,165 @@ function UserManagementPanel({ currentUser }: { currentUser: User }) {
   }
 
   return (
-    <section className="portal-panel space-y-4">
-      <div className="flex items-center gap-2">
-        <Users className="h-5 w-5 text-clinic-700" />
-        <h3 className="font-bold">Benutzerverwaltung</h3>
-      </div>
-      <form className="space-y-3" onSubmit={submit}>
-        <input className="form-control" placeholder="Vollständiger Name" value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} required />
-        <input className="form-control" type="email" placeholder="E-Mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
-        <input className="form-control" type="password" placeholder="Initiales Passwort" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={10} required />
-        <select className="form-control" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
-          {creatableRoles.map((role) => <option key={role} value={role}>{role}</option>)}
-        </select>
-        {error && <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        {success && <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
-        <button disabled={saving} className="btn-primary w-full">{saving ? 'Lege Benutzer an …' : 'Benutzer anlegen'}</button>
-      </form>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-sm text-slate-500">
-          <span>Vorhandene Zugänge</span>
-          <button className="font-semibold text-clinic-700" onClick={loadUsers} type="button">Neu laden</button>
+    <section className="card">
+      <div className="card-header flex items-center justify-between">
+        <div>
+          <h3 className="card-title flex items-center gap-2">
+            <Users className="h-4 w-4 text-indigo-600" /> Benutzerverwaltung
+          </h3>
+          <p className="card-description">Anlegen, Rollen, Passwörter</p>
         </div>
-        <div className="max-h-64 space-y-2 overflow-auto">
-          {loading ? <p className="text-sm text-slate-500">Benutzer werden geladen …</p> : users.map((user) => (
-            <div key={user.id} className="rounded-2xl bg-slate-50 p-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-slate-800">{user.full_name}</p>
-                  <p className="text-slate-500">{user.email}</p>
+        <button className="btn btn-sm btn-secondary" onClick={loadUsers} type="button">
+          Neu laden
+        </button>
+      </div>
+      <div className="card-body space-y-4 pt-3">
+        <form className="grid gap-2 sm:grid-cols-2" onSubmit={submit}>
+          <input
+            className="form-control"
+            placeholder="Vollständiger Name"
+            value={form.full_name}
+            onChange={(event) => setForm({ ...form, full_name: event.target.value })}
+            required
+          />
+          <input
+            className="form-control"
+            type="email"
+            placeholder="E-Mail"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            required
+          />
+          <input
+            className="form-control"
+            type="password"
+            placeholder="Initiales Passwort"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            minLength={10}
+            required
+          />
+          <select
+            className="form-control"
+            value={form.role}
+            onChange={(event) => setForm({ ...form, role: event.target.value as Role })}
+          >
+            {creatableRoles.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+          {error && (
+            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs text-rose-700 sm:col-span-2">
+              {error}
+            </p>
+          )}
+          {success && (
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 sm:col-span-2">
+              {success}
+            </p>
+          )}
+          <button disabled={saving} className="btn btn-primary sm:col-span-2">
+            {saving ? 'Lege Benutzer an …' : 'Benutzer anlegen'}
+          </button>
+        </form>
+
+        <div className="space-y-1.5">
+          {loading ? (
+            <p className="muted">Benutzer werden geladen …</p>
+          ) : (
+            users.map((user) => (
+              <div key={user.id} className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900">{user.full_name}</p>
+                    <p className="truncate text-slate-500">{user.email}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={user.is_active ? 'badge badge-emerald' : 'badge badge-rose'}>
+                      {user.is_active ? 'aktiv' : 'inaktiv'}
+                    </span>
+                    <span className="badge badge-indigo">{user.role}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{user.is_active ? 'aktiv' : 'inaktiv'}</span>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-clinic-700">{user.role}</span>
+                <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                  <select
+                    className="form-control"
+                    value={roleDrafts[user.id] ?? user.role}
+                    onChange={(event) =>
+                      setRoleDrafts((currentDrafts) => ({
+                        ...currentDrafts,
+                        [user.id]: event.target.value as Role,
+                      }))
+                    }
+                    disabled={currentUser.id === user.id || !canManageUser(user)}
+                  >
+                    {manageableRoles(user).map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => updateRole(user)}
+                    type="button"
+                    disabled={currentUser.id === user.id || !canManageUser(user)}
+                  >
+                    Rolle setzen
+                  </button>
+                  <input
+                    className="form-control"
+                    type="password"
+                    placeholder="Neues Passwort"
+                    value={passwordDrafts[user.id] ?? ''}
+                    onChange={(event) =>
+                      setPasswordDrafts((currentDrafts) => ({ ...currentDrafts, [user.id]: event.target.value }))
+                    }
+                    disabled={!canManageUser(user)}
+                  />
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => resetPassword(user)}
+                    type="button"
+                    disabled={!canManageUser(user)}
+                  >
+                    Passwort setzen
+                  </button>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => toggleUserStatus(user)}
+                    type="button"
+                    disabled={(currentUser.id === user.id && user.is_active) || !canManageUser(user)}
+                  >
+                    {user.is_active ? 'Deaktivieren' : 'Aktivieren'}
+                  </button>
+                  <button
+                    className="btn btn-sm btn-danger"
+                    onClick={() => deleteUser(user)}
+                    type="button"
+                    disabled={currentUser.id === user.id || !canManageUser(user)}
+                  >
+                    Löschen
+                  </button>
                 </div>
               </div>
-              <div className="mt-3 flex flex-col gap-2 lg:flex-row">
-                <select
-                  className="rounded-xl border bg-white p-2.5"
-                  value={roleDrafts[user.id] ?? user.role}
-                  onChange={(event) => setRoleDrafts((currentDrafts) => ({ ...currentDrafts, [user.id]: event.target.value as Role }))}
-                  disabled={currentUser.id === user.id || !canManageUser(user)}
-                >
-                  {manageableRoles(user).map((role) => <option key={role} value={role}>{role}</option>)}
-                </select>
-                <button className="rounded-xl border px-3 py-2 font-semibold text-clinic-700" onClick={() => updateRole(user)} type="button" disabled={currentUser.id === user.id || !canManageUser(user)}>Rolle setzen</button>
-                <input
-                  className="flex-1 rounded-xl border bg-white p-2.5"
-                  type="password"
-                  placeholder="Neues Passwort setzen"
-                  value={passwordDrafts[user.id] ?? ''}
-                  onChange={(event) => setPasswordDrafts((currentDrafts) => ({ ...currentDrafts, [user.id]: event.target.value }))}
-                  disabled={!canManageUser(user)}
-                />
-                <button className="rounded-xl border px-3 py-2 font-semibold text-clinic-700" onClick={() => resetPassword(user)} type="button" disabled={!canManageUser(user)}>Passwort setzen</button>
-                <button className="rounded-xl border px-3 py-2 font-semibold text-slate-700" onClick={() => toggleUserStatus(user)} type="button" disabled={(currentUser.id === user.id && user.is_active) || !canManageUser(user)}>
-                  {user.is_active ? 'Deaktivieren' : 'Aktivieren'}
-                </button>
-                <button className="rounded-xl border px-3 py-2 font-semibold text-rose-700" onClick={() => deleteUser(user)} type="button" disabled={currentUser.id === user.id || !canManageUser(user)}>Löschen</button>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </section>
   )
 }
 
+/* ============================== Helpers / cover / shelf ============================== */
+
 function escapeHtml(value: string) {
-  return value.replace(/[&<>"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character] ?? character)
+  return value.replace(
+    /[&<>"]/g,
+    (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character] ?? character,
+  )
 }
 
 function highlightTerm(value: string, query: string) {
@@ -822,40 +1404,61 @@ function highlightTerm(value: string, query: string) {
   return escaped.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>')
 }
 
-function shortTitle(title: string) {
-  return title.split(/\s+/).slice(0, 7).join(' ')
+function shortTitle(title: string, words = 6) {
+  return title.split(/\s+/).slice(0, words).join(' ')
 }
 
-function coverTheme(book: Book) {
-  const themes = [
-    'from-[#143a68] via-[#1d5d97] to-[#63b4ff]',
-    'from-[#43286b] via-[#6a3ea1] to-[#c084fc]',
-    'from-[#0f4c5c] via-[#14798a] to-[#6bd2dc]',
-    'from-[#3c2f17] via-[#8f5b1f] to-[#e9b44c]',
-    'from-[#1d3b2f] via-[#2f7d58] to-[#7fd1a3]'
-  ]
-  const signature = `${book.title}${book.specialty ?? ''}`.split('').reduce((sum, character) => sum + character.charCodeAt(0), 0)
-  return themes[signature % themes.length]
+const COVER_THEMES = [
+  'linear-gradient(155deg, #312e81 0%, #4f46e5 60%, #818cf8 100%)',
+  'linear-gradient(155deg, #134e4a 0%, #0f766e 60%, #5eead4 100%)',
+  'linear-gradient(155deg, #7c2d12 0%, #c2410c 60%, #fdba74 100%)',
+  'linear-gradient(155deg, #1e3a8a 0%, #1d4ed8 60%, #60a5fa 100%)',
+  'linear-gradient(155deg, #581c87 0%, #7e22ce 60%, #d8b4fe 100%)',
+  'linear-gradient(155deg, #14532d 0%, #15803d 60%, #86efac 100%)',
+]
+
+function coverGradient(book: Book) {
+  const signature = `${book.title}${book.specialty ?? ''}`
+    .split('')
+    .reduce((sum, character) => sum + character.charCodeAt(0), 0)
+  return COVER_THEMES[signature % COVER_THEMES.length]
 }
 
 function BookCover({ book, compact = false }: { book: Book; compact?: boolean }) {
+  const dimensions = compact ? 'h-14 w-10' : 'h-28 w-20'
+  const titleSize = compact ? 'text-[8px]' : 'text-[10px]'
   return (
-    <div className={`${compact ? 'h-28 w-20 rounded-2xl p-3' : 'h-56 w-40 rounded-[1.4rem] p-5'} ${coverTheme(book)} cover-sheen relative flex shrink-0 flex-col justify-between overflow-hidden bg-gradient-to-br text-white shadow-xl shadow-slate-900/15`}>
-      <div className="absolute left-0 top-0 h-full w-3 bg-black/20" />
-      <div className="absolute inset-x-4 top-4 h-px bg-white/30" />
-      <div>
-        <p className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-sky-100">{book.media_type === 'journal' ? 'Journal' : 'Fachbuch'}</p>
-        <h3 className={`${compact ? 'mt-2 text-[0.7rem]' : 'mt-4 text-xl'} line-clamp-4 font-black leading-tight`}>{shortTitle(book.title)}</h3>
-      </div>
-      <div>
-        <p className="line-clamp-1 text-xs font-semibold text-sky-100">{book.specialty || 'Medizin'}</p>
-        {!compact && <p className="mt-1 line-clamp-1 text-[0.7rem] text-sky-100/80">{book.publisher || book.authors || 'MedLib'}</p>}
-      </div>
+    <div
+      className={`cover ${dimensions} flex shrink-0 flex-col justify-between p-1.5`}
+      style={{ background: coverGradient(book) }}
+    >
+      <p className={`${titleSize} line-clamp-3 font-semibold leading-tight`}>{shortTitle(book.title, compact ? 4 : 7)}</p>
+      {!compact && (
+        <p className="line-clamp-1 text-[8px] font-medium uppercase tracking-wide text-white/80">
+          {book.specialty || (book.media_type === 'journal' ? 'Journal' : 'Buch')}
+        </p>
+      )}
     </div>
   )
 }
 
-function BookShelf({ books, hits, query, onSelect, onSave }: { books: Book[]; hits: SearchHit[]; query: string; onSelect: (book: Book) => void; onSave: (book: Book) => Promise<void> }) {
+function EmptyCover() {
+  return <div className="cover-empty h-28 w-20" />
+}
+
+function BookShelf({
+  books,
+  hits,
+  query,
+  onSelect,
+  onSave,
+}: {
+  books: Book[]
+  hits: SearchHit[]
+  query: string
+  onSelect: (book: Book) => void
+  onSave: (book: Book) => Promise<void>
+}) {
   const [mediaFilter, setMediaFilter] = useState<'all' | 'book' | 'journal'>('all')
   const [letterFilter, setLetterFilter] = useState('ALLE')
   const [sortBy, setSortBy] = useState<'title' | 'year' | 'specialty' | 'author'>('title')
@@ -863,101 +1466,172 @@ function BookShelf({ books, hits, query, onSelect, onSave }: { books: Book[]; hi
 
   const sortedBooks = useMemo(() => {
     return [...books]
-    .filter((book) => mediaFilter === 'all' || book.media_type === mediaFilter)
-    .filter((book) => letterFilter === 'ALLE' || book.title.trim().charAt(0).toUpperCase() === letterFilter)
-    .sort((a, b) => {
-      if (sortBy === 'title') return a.title.localeCompare(b.title)
-      if (sortBy === 'year') return (b.year || 0) - (a.year || 0)
-      if (sortBy === 'specialty') return (a.specialty || '').localeCompare(b.specialty || '')
-      if (sortBy === 'author') return (a.authors || a.publisher || '').localeCompare(b.authors || b.publisher || '')
-      return 0
-    })
+      .filter((book) => mediaFilter === 'all' || book.media_type === mediaFilter)
+      .filter((book) => letterFilter === 'ALLE' || book.title.trim().charAt(0).toUpperCase() === letterFilter)
+      .sort((a, b) => {
+        if (sortBy === 'title') return a.title.localeCompare(b.title)
+        if (sortBy === 'year') return (b.year || 0) - (a.year || 0)
+        if (sortBy === 'specialty') return (a.specialty || '').localeCompare(b.specialty || '')
+        if (sortBy === 'author') return (a.authors || a.publisher || '').localeCompare(b.authors || b.publisher || '')
+        return 0
+      })
   }, [books, letterFilter, mediaFilter, sortBy])
 
-  const letters = useMemo(() => ['ALLE', ...new Set(books.map((book) => book.title.trim().charAt(0).toUpperCase()).filter(Boolean))], [books])
+  const letters = useMemo(
+    () => ['ALLE', ...new Set(books.map((book) => book.title.trim().charAt(0).toUpperCase()).filter(Boolean)).values()],
+    [books],
+  )
 
   return (
-    <section className="portal-card overflow-hidden p-5 md:p-6">
-      <div className="flex flex-col gap-5 border-b border-slate-200 pb-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <section className="card">
+      <div className="card-header">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="portal-eyebrow">Bibliothek</p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Regalansicht & Bestandsliste</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Wie in einem Fachportal: nach Medium filtern, alphabetisch eingrenzen und anschließend gezielt nach Relevanz sortieren.</p>
+            <h3 className="card-title">Bestand</h3>
+            <p className="card-description">Filtern, sortieren und direkt öffnen</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex rounded-full border border-slate-200 bg-slate-50 p-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-md bg-slate-100 p-0.5">
               {[
                 ['all', 'Alle'],
                 ['journal', 'Zeitschriften'],
-                ['book', 'Bücher']
+                ['book', 'Bücher'],
               ].map(([value, label]) => (
-                <button key={value} className={`portal-tab ${mediaFilter === value ? 'portal-tab-active' : ''}`} onClick={() => setMediaFilter(value as 'all' | 'book' | 'journal')} type="button">{label}</button>
+                <button
+                  key={value}
+                  className={`tab ${mediaFilter === value ? 'tab-active' : ''}`}
+                  onClick={() => setMediaFilter(value as 'all' | 'book' | 'journal')}
+                  type="button"
+                >
+                  {label}
+                </button>
               ))}
             </div>
-            <select className="form-control min-w-[220px] bg-white text-sm font-semibold text-slate-700 shadow-sm" value={sortBy} onChange={(event) => setSortBy(event.target.value as 'title' | 'year' | 'specialty' | 'author')}>
-              <option value="title">Sortieren nach Titel</option>
-              <option value="year">Sortieren nach Jahr</option>
-              <option value="specialty">Sortieren nach Fachgebiet</option>
-              <option value="author">Sortieren nach Autor:in</option>
+            <select
+              className="form-control h-8 w-44 text-xs"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as 'title' | 'year' | 'specialty' | 'author')}
+            >
+              <option value="title">Sortieren: Titel</option>
+              <option value="year">Sortieren: Jahr</option>
+              <option value="specialty">Sortieren: Fachgebiet</option>
+              <option value="author">Sortieren: Autor:in</option>
             </select>
           </div>
         </div>
-        <div className="alphabet-rail">
+      </div>
+
+      <div className="card-body space-y-3 pt-3">
+        <div className="flex flex-wrap gap-1.5">
           {letters.map((letter) => (
-            <button key={letter} className={`alphabet-chip ${letterFilter === letter ? 'alphabet-chip-active' : ''}`} onClick={() => setLetterFilter(letter)} type="button">{letter}</button>
+            <button
+              key={letter}
+              className={`alphabet-chip ${letterFilter === letter ? 'alphabet-chip-active' : ''}`}
+              onClick={() => setLetterFilter(letter)}
+              type="button"
+            >
+              {letter}
+            </button>
           ))}
         </div>
-      </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500">{sortedBooks.length} Titel in der aktuellen Auswahl</p>
-        <p className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">{query.trim() ? `Suche: ${query}` : 'Alle Ergebnisse'}</p>
-      </div>
-
-      <div className="mt-5 space-y-4">
-      {sortedBooks.map((book) => {
-        const hit = hitsByBook.get(book.id)
-        return (
-          <article key={book.id} className="portal-list-row group">
-            <button className="text-left" onClick={() => onSelect(book)} aria-label={`${book.title} öffnen`}><BookCover book={book} /></button>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-clinic-700">
-                <span>{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span>
-                <span className="text-slate-300">•</span>
-                <span>{book.specialty ?? 'Medizin'}</span>
-              </div>
-              <button className="mt-2 text-left" onClick={() => onSelect(book)}>
-                <h3 className="line-clamp-2 text-2xl font-black leading-tight text-slate-950 group-hover:text-clinic-700">{book.title}</h3>
-              </button>
-              <p className="mt-2 text-base text-slate-600">{book.authors ?? book.publisher ?? 'Unbekannte Autor:innen'}</p>
-              <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">{book.year || 'o. J.'}</span>
-                <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">{book.page_count} Seiten</span>
-                {book.publisher && <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">{book.publisher}</span>}
-              </div>
-              {hit?.snippet && <p className="snippet mt-4 line-clamp-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-slate-700" dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }} />}
-            </div>
-            <div className="flex flex-col gap-3 self-center md:items-end">
-              <button className="btn-primary w-full md:min-w-32" onClick={() => onSelect(book)}>Lesen</button>
-              <button className="btn-secondary w-full md:min-w-32" onClick={() => void onSave(book)}>Merken</button>
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Direktzugriff</span>
-            </div>
-          </article>
-        )
-      })}
-      {!sortedBooks.length && (
-        <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-          <p className="text-lg font-bold text-slate-900">Keine Titel in dieser Auswahl.</p>
-          <p className="mt-2 text-sm text-slate-500">Passe Filter oder Suchbegriff an, um weitere Medien zu sehen.</p>
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          <span>{sortedBooks.length} Titel</span>
+          {query.trim() && <span className="badge badge-slate">Suche: {query}</span>}
         </div>
-      )}
+
+        {sortedBooks.length > 0 ? (
+          <div className="space-y-1.5">
+            {sortedBooks.map((book) => {
+              const hit = hitsByBook.get(book.id)
+              return (
+                <article key={book.id} className="book-row group">
+                  <button
+                    type="button"
+                    className="flex items-center justify-center"
+                    onClick={() => onSelect(book)}
+                    aria-label={`${book.title} öffnen`}
+                  >
+                    <BookCover book={book} compact />
+                  </button>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                      <span>{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span>
+                      <span className="text-slate-300">•</span>
+                      <span>{book.specialty ?? 'Medizin'}</span>
+                      {book.year && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span>{book.year}</span>
+                        </>
+                      )}
+                    </div>
+                    <button className="mt-0.5 text-left" onClick={() => onSelect(book)} type="button">
+                      <h4 className="line-clamp-1 text-sm font-semibold text-slate-900 group-hover:text-indigo-700">
+                        {book.title}
+                      </h4>
+                    </button>
+                    <p className="line-clamp-1 text-xs text-slate-500">
+                      {book.authors ?? book.publisher ?? 'Unbekannt'} · {book.page_count} Seiten
+                    </p>
+                    {hit?.snippet && (
+                      <p
+                        className="snippet mt-1.5 line-clamp-2 rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-[11px] leading-5 text-slate-700"
+                        dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button className="btn btn-sm btn-primary" onClick={() => onSelect(book)} type="button">
+                      Lesen
+                    </button>
+                    <button className="btn btn-sm btn-secondary" onClick={() => void onSave(book)} type="button">
+                      Merken
+                    </button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        ) : (
+          <EmptyShelf />
+        )}
       </div>
     </section>
   )
 }
 
-function Reader({ book, query, onBack, onSave }: { book: Book; query: string; onBack: () => void; onSave: (book: Book) => Promise<void> }) {
+function EmptyShelf() {
+  return (
+    <div className="shelf">
+      <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-8">
+        {Array.from({ length: 16 }).map((_, index) => (
+          <EmptyCover key={index} />
+        ))}
+      </div>
+      <div className="mt-4 text-center">
+        <p className="text-sm font-medium text-slate-900">Das Regal ist noch leer</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Sobald Medien hochgeladen wurden, erscheinen sie hier mit Cover und Suche.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/* ============================== Reader ============================== */
+
+function Reader({
+  book,
+  query,
+  onBack,
+  onSave,
+}: {
+  book: Book
+  query: string
+  onBack: () => void
+  onSave: (book: Book) => Promise<void>
+}) {
   const [pageNumber, setPageNumber] = useState(1)
   const [page, setPage] = useState<PageText | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
@@ -966,7 +1640,15 @@ function Reader({ book, query, onBack, onSave }: { book: Book; query: string; on
   const [noteText, setNoteText] = useState('')
 
   useEffect(() => {
-    api.page(book.id, pageNumber).then(setPage).catch(() => setPage({ page_number: pageNumber, text: 'Für diese Seite liegt noch kein OCR-Text vor. Der OCR-Job läuft ggf. noch.' }))
+    api
+      .page(book.id, pageNumber)
+      .then(setPage)
+      .catch(() =>
+        setPage({
+          page_number: pageNumber,
+          text: 'Für diese Seite liegt noch kein OCR-Text vor. Der OCR-Job läuft ggf. noch.',
+        }),
+      )
     api.notes(book.id).then(setNotes)
     api.bookmarks(book.id).then(setBookmarks)
     api.highlights(book.id).then(setHighlights)
@@ -997,27 +1679,106 @@ function Reader({ book, query, onBack, onSave }: { book: Book; query: string; on
   }
 
   return (
-    <div className="rounded-3xl border bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-        <div><button className="mb-2 text-sm font-semibold text-clinic-700" onClick={onBack}>← Zur Bibliothek</button><h2 className="text-2xl font-bold">{book.title}</h2><p className="text-sm text-slate-500">{book.authors} · {book.publisher} · {book.year}</p></div>
-        <div className="flex gap-2"><button className="flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold hover:bg-slate-50" onClick={() => onSave(book)}><Star className="h-4 w-4" /> Sammeln</button><button className="flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold hover:bg-slate-50" onClick={() => api.downloadBook(book)}><Download className="h-4 w-4" /> PDF</button></div>
+    <section className="card">
+      <div className="card-header flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <button className="text-xs font-medium text-indigo-700 hover:text-indigo-800" onClick={onBack} type="button">
+            ← Zur Bibliothek
+          </button>
+          <h3 className="mt-1 truncate text-base font-semibold text-slate-900">{book.title}</h3>
+          <p className="truncate text-xs text-slate-500">
+            {[book.authors, book.publisher, book.year].filter(Boolean).join(' · ')}
+          </p>
+        </div>
+        <div className="flex gap-1.5">
+          <button className="btn btn-sm btn-secondary" onClick={() => onSave(book)} type="button">
+            <Star className="h-3.5 w-3.5" /> Merken
+          </button>
+          <button className="btn btn-sm btn-secondary" onClick={() => api.downloadBook(book)} type="button">
+            <Download className="h-3.5 w-3.5" /> PDF
+          </button>
+        </div>
       </div>
-      <div className="grid lg:grid-cols-[1fr_320px]">
-        <article className="min-h-[720px] border-r bg-slate-100 p-6">
-          <div className="mx-auto max-w-3xl rounded-2xl bg-white p-8 shadow-lg">
-            <div className="mb-6 flex items-center justify-between"><button disabled={pageNumber <= 1} onClick={() => setPageNumber(pageNumber - 1)} className="rounded-xl border px-4 py-2 disabled:opacity-40">Zurück</button><span className="font-semibold">Seite {pageNumber} / {book.page_count || '?'}</span><button disabled={book.page_count > 0 && pageNumber >= book.page_count} onClick={() => setPageNumber(pageNumber + 1)} className="rounded-xl border px-4 py-2 disabled:opacity-40">Weiter</button></div>
-            <div className="reader-text whitespace-pre-wrap leading-8 text-slate-800" onMouseUp={saveHighlight} dangerouslySetInnerHTML={{ __html: markedText }} />
+      <div className="grid lg:grid-cols-[1fr_18rem]">
+        <article className="min-h-[36rem] border-r border-slate-100 bg-slate-50 p-5">
+          <div className="mx-auto max-w-3xl rounded-md border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between text-xs">
+              <button
+                disabled={pageNumber <= 1}
+                onClick={() => setPageNumber(pageNumber - 1)}
+                className="btn btn-sm btn-secondary"
+              >
+                Zurück
+              </button>
+              <span className="font-medium text-slate-700">
+                Seite {pageNumber} / {book.page_count || '?'}
+              </span>
+              <button
+                disabled={book.page_count > 0 && pageNumber >= book.page_count}
+                onClick={() => setPageNumber(pageNumber + 1)}
+                className="btn btn-sm btn-secondary"
+              >
+                Weiter
+              </button>
+            </div>
+            <div
+              className="reader-text whitespace-pre-wrap text-sm leading-7 text-slate-800"
+              onMouseUp={saveHighlight}
+              dangerouslySetInnerHTML={{ __html: markedText }}
+            />
           </div>
         </article>
-        <aside className="space-y-5 p-5">
-          <button className="w-full rounded-2xl bg-clinic-700 py-3 font-semibold text-white" onClick={saveBookmark}>Lesezeichen setzen</button>
-          <section><h3 className="mb-2 font-bold">Notiz zur Seite</h3><textarea className="h-28 w-full rounded-2xl border p-3" value={noteText} onChange={(event) => setNoteText(event.target.value)} /><button className="mt-2 rounded-xl border px-4 py-2 font-semibold" onClick={saveNote}>Speichern</button></section>
-          <section><h3 className="mb-2 font-bold">Meine Lesezeichen</h3>{bookmarks.map((bookmark) => <button key={bookmark.id} className="mb-2 block rounded-xl bg-slate-100 px-3 py-2 text-sm" onClick={() => setPageNumber(bookmark.page_number)}>{bookmark.label}</button>)}</section>
-          <section><h3 className="mb-2 font-bold">Markierungen</h3>{highlights.map((highlight) => <p key={highlight.id} className="mb-2 rounded-xl bg-yellow-50 p-3 text-sm">{highlight.selected_text}</p>)}</section>
-          <section><h3 className="mb-2 font-bold">Notizen</h3>{notes.map((note) => <p key={note.id} className="mb-2 rounded-xl bg-slate-50 p-3 text-sm"><span className="font-semibold">S. {note.page_number}: </span>{note.body}</p>)}</section>
+        <aside className="space-y-4 p-4">
+          <button className="btn btn-primary w-full" onClick={saveBookmark} type="button">
+            Lesezeichen setzen
+          </button>
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notiz zur Seite</h4>
+            <textarea
+              className="w-full"
+              value={noteText}
+              onChange={(event) => setNoteText(event.target.value)}
+            />
+            <button className="btn btn-sm btn-secondary mt-1.5" onClick={saveNote} type="button">
+              Speichern
+            </button>
+          </section>
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Lesezeichen</h4>
+            {bookmarks.map((bookmark) => (
+              <button
+                key={bookmark.id}
+                className="mb-1 block w-full rounded-md bg-slate-50 px-2.5 py-1.5 text-left text-xs hover:bg-slate-100"
+                onClick={() => setPageNumber(bookmark.page_number)}
+                type="button"
+              >
+                {bookmark.label}
+              </button>
+            ))}
+            {!bookmarks.length && <p className="muted">Noch keine Lesezeichen.</p>}
+          </section>
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Markierungen</h4>
+            {highlights.map((highlight) => (
+              <p key={highlight.id} className="mb-1 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-slate-700">
+                {highlight.selected_text}
+              </p>
+            ))}
+            {!highlights.length && <p className="muted">Noch keine Markierungen.</p>}
+          </section>
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notizen</h4>
+            {notes.map((note) => (
+              <p key={note.id} className="mb-1 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
+                <span className="font-medium text-slate-900">S. {note.page_number}: </span>
+                <span className="text-slate-600">{note.body}</span>
+              </p>
+            ))}
+            {!notes.length && <p className="muted">Noch keine Notizen.</p>}
+          </section>
         </aside>
       </div>
-    </div>
+    </section>
   )
 }
 
