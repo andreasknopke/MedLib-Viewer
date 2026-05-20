@@ -10,6 +10,9 @@ from app.routers import annotations, auth, books, dashboard, taxonomy, workspace
 
 settings = get_settings()
 
+print(f"[medlib] Settings loaded – DB={settings.database_url[:40]}…")
+print(f"[medlib] ROOT_ADMIN_EMAIL={settings.root_admin_email!r}")
+
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -29,25 +32,21 @@ app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"]
 
 @app.on_event("startup")
 def startup() -> None:
-    import logging
-
-    log = logging.getLogger("medlib.startup")
-
     # 1) Ensure all tables exist (idempotent – safe to run every time)
     try:
         from app.database import Base, engine
-        log.info("Ensuring database tables exist …")
+        print("[medlib] Creating database tables …")
         Base.metadata.create_all(bind=engine)
-        log.info("Database tables ready.")
-    except Exception:
-        log.exception("create_all failed")
+        print("[medlib] Database tables ready.")
+    except Exception as exc:
+        print(f"[medlib] create_all failed: {exc}")
 
     # 2) Create root admin if configured
     try:
         ensure_root_admin()
-        log.info("Root admin check completed.")
-    except Exception:
-        log.exception("Root admin bootstrap failed")
+        print("[medlib] Root admin check completed.")
+    except Exception as exc:
+        print(f"[medlib] Root admin bootstrap failed: {exc}")
 
 
 @app.get("/api/health")
