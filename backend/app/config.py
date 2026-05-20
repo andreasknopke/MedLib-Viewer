@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     root_admin_full_name: str = "Root Administrator"
     root_admin_update_password: bool = False
 
+    @field_validator("root_admin_email", "root_admin_password", mode="before")
+    @classmethod
+    def strip_env_strings(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            stripped = v.strip().strip('"').strip("'")
+            return stripped if stripped else None
+        return v
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Any) -> list[str]:
