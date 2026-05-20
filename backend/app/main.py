@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.bootstrap import ensure_root_admin
 from app.config import get_settings
+from app.database import get_db
 from app.routers import annotations, auth, books, dashboard, taxonomy, workspace
 
 settings = get_settings()
@@ -58,3 +61,27 @@ def startup() -> None:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": settings.app_name}
+
+
+@app.get("/api/debug/env")
+def debug_env() -> dict:
+    """Temporary debug endpoint – remove before production."""
+    return {
+        "ROOT_ADMIN_EMAIL_set": bool(settings.root_admin_email),
+        "ROOT_ADMIN_EMAIL_value": settings.root_admin_email or "(not set)",
+        "ROOT_ADMIN_PASSWORD_set": bool(settings.root_admin_password),
+        "ROOT_ADMIN_PASSWORD_length": len(settings.root_admin_password) if settings.root_admin_password else 0,
+        "DATABASE_URL": settings.database_url[:30] + "…",
+        "SECRET_KEY_set": settings.secret_key != "change-me-in-production",
+    }
+
+
+@app.get("/api/debug/users")
+def debug_users(db: Session = Depends(get_db)) -> dict:
+    """Temporary debug endpoint – remove before production."""
+    from app.models import User
+    users = db.scalars(select(User)).all()
+    return {
+        "count": len(users),
+        "users": [{"email": u.email, "role": u.role.value, "is_active": u.is_active} for u in users],
+    }
