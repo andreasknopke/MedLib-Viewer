@@ -8,6 +8,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medlibsecret}
     volumes:
       - medlib-postgres-data:/var/lib/postgresql/data
+    networks:
+      - medlib-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medlib} -d ${POSTGRES_DB:-medlib}"]
       interval: 5s
@@ -32,6 +34,8 @@ services:
       ROOT_ADMIN_UPDATE_PASSWORD: ${ROOT_ADMIN_UPDATE_PASSWORD:-false}
     volumes:
       - medlib-books-data:/data/books
+    networks:
+      - medlib-net
     expose:
       - "8000"
     depends_on:
@@ -48,6 +52,8 @@ services:
     build:
       context: ./frontend
     restart: unless-stopped
+    networks:
+      - medlib-net
     expose:
       - "80"
     depends_on:
@@ -59,6 +65,10 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+networks:
+  medlib-net:
+    driver: bridge
 
 volumes:
   medlib-postgres-data:
