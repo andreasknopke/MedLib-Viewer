@@ -158,7 +158,7 @@ async def inspect_book(
 
     settings = get_settings()
     cover_text = ocr_cover_text(temp_path, language=settings.ocr_language)
-    result = lookup_metadata(cover_text)
+    result = lookup_metadata(cover_text, filename=file.filename)
 
     return InspectResponse(
         temp_id=temp_id,
