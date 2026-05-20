@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Book, BookPage, OcrJob, Role, User
+from app.models import Book, BookPage, MediaType, OcrJob, Role, User
 from app.ocr import count_pdf_pages, run_ocr_job
 from app.schemas import BookRead, OcrJobRead, PageRead, SearchHit
 from app.security import get_current_user, require_roles
@@ -47,6 +47,7 @@ async def upload_book(
     year: int | None = Form(None),
     edition: str | None = Form(None),
     specialty: str | None = Form(None),
+    media_type: MediaType = Form(MediaType.book),
     tags: str = Form(""),
     description: str | None = Form(None),
     is_downloadable: bool = Form(True),
@@ -70,6 +71,7 @@ async def upload_book(
         year=year,
         edition=edition,
         specialty=specialty,
+        media_type=media_type,
         tags=[tag.strip() for tag in tags.split(",") if tag.strip()],
         description=description,
         is_downloadable=is_downloadable,

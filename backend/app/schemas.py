@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.models import OcrStatus, Role
+from app.models import MediaType, OcrStatus, Role
 
 
 class Token(BaseModel):
@@ -29,6 +29,66 @@ class UserRead(BaseModel):
         from_attributes = True
 
 
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class UserPasswordUpdate(BaseModel):
+    password: str = Field(min_length=10)
+
+
+class UserRoleUpdate(BaseModel):
+    role: Role
+
+
+class SelfPasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=10)
+
+
+class DashboardMetric(BaseModel):
+    key: str
+    label: str
+    value: int
+
+
+class DashboardJobRead(BaseModel):
+    id: UUID
+    book_id: UUID
+    book_title: str
+    status: OcrStatus
+    progress: int
+    message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DashboardImportRead(BaseModel):
+    book_id: UUID
+    title: str
+    authors: str | None
+    specialty: str | None
+    source_filename: str
+    page_count: int
+    created_at: datetime
+    ocr_status: OcrStatus | None = None
+    ocr_progress: int | None = None
+
+
+class DashboardSpecialtyRead(BaseModel):
+    specialty: str
+    count: int
+
+
+class DashboardOverviewRead(BaseModel):
+    metrics: list[DashboardMetric]
+    records_by_table: list[DashboardMetric]
+    job_status_counts: dict[str, int]
+    recent_jobs: list[DashboardJobRead]
+    recent_imports: list[DashboardImportRead]
+    top_specialties: list[DashboardSpecialtyRead]
+
+
 class BookCreate(BaseModel):
     title: str
     subtitle: str | None = None
@@ -38,6 +98,7 @@ class BookCreate(BaseModel):
     year: int | None = None
     edition: str | None = None
     specialty: str | None = None
+    media_type: MediaType = MediaType.book
     language: str = "de"
     tags: list[str] = []
     description: str | None = None
@@ -127,3 +188,95 @@ class HighlightRead(HighlightCreate):
 
     class Config:
         from_attributes = True
+
+
+class ClinicCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class ClinicRead(ClinicCreate):
+    id: UUID
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DepartmentCreate(BaseModel):
+    clinic_id: UUID
+    name: str
+    description: str | None = None
+
+
+class DepartmentRead(DepartmentCreate):
+    id: UUID
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CategoryCreate(BaseModel):
+    department_id: UUID
+    name: str
+    description: str | None = None
+
+
+class CategoryRead(CategoryCreate):
+    id: UUID
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PlacementCreate(BaseModel):
+    book_id: UUID
+    clinic_id: UUID
+    department_id: UUID
+    category_id: UUID | None = None
+
+
+class PlacementRead(PlacementCreate):
+    id: UUID
+    clinic_name: str | None = None
+    department_name: str | None = None
+    category_name: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SavedMediaRead(BaseModel):
+    id: UUID
+    book: BookRead
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserBookmarkOverview(BaseModel):
+    id: UUID
+    book_id: UUID
+    book_title: str
+    page_number: int
+    label: str | None = None
+    created_at: datetime
+
+
+class UserNoteOverview(BaseModel):
+    id: UUID
+    book_id: UUID
+    book_title: str
+    page_number: int | None = None
+    body: str
+    created_at: datetime
+
+
+class UserWorkspaceRead(BaseModel):
+    saved_media: list[SavedMediaRead]
+    bookmarks: list[UserBookmarkOverview]
+    notes: list[UserNoteOverview]

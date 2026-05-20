@@ -1,4 +1,4 @@
-import type { Book, Bookmark, Highlight, Note, PageText, SearchHit, User } from './types'
+import type { Book, Bookmark, Category, Clinic, DashboardOverview, Department, Highlight, Note, PageText, Placement, SearchHit, User, UserCreatePayload, UserWorkspace } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -12,6 +12,9 @@ export class ApiClient {
     if (!response.ok) {
       const detail = await response.text()
       throw new Error(detail || response.statusText)
+    }
+    if (response.status === 204) {
+      return undefined as T
     }
     return response.json() as Promise<T>
   }
@@ -33,6 +36,118 @@ export class ApiClient {
 
   me() {
     return this.request<User>('/api/auth/me')
+  }
+
+  dashboardOverview() {
+    return this.request<DashboardOverview>('/api/dashboard/overview')
+  }
+
+  clinics() {
+    return this.request<Clinic[]>('/api/taxonomy/clinics')
+  }
+
+  createClinic(name: string, description?: string) {
+    return this.request<Clinic>('/api/taxonomy/clinics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description })
+    })
+  }
+
+  departments(clinicId?: string) {
+    return this.request<Department[]>(`/api/taxonomy/departments${clinicId ? `?clinic_id=${clinicId}` : ''}`)
+  }
+
+  createDepartment(clinicId: string, name: string, description?: string) {
+    return this.request<Department>('/api/taxonomy/departments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clinic_id: clinicId, name, description })
+    })
+  }
+
+  categories(departmentId?: string) {
+    return this.request<Category[]>(`/api/taxonomy/categories${departmentId ? `?department_id=${departmentId}` : ''}`)
+  }
+
+  createCategory(departmentId: string, name: string, description?: string) {
+    return this.request<Category>('/api/taxonomy/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ department_id: departmentId, name, description })
+    })
+  }
+
+  placements(bookId?: string) {
+    return this.request<Placement[]>(`/api/taxonomy/placements${bookId ? `?book_id=${bookId}` : ''}`)
+  }
+
+  createPlacement(payload: { book_id: string; clinic_id: string; department_id: string; category_id?: string | null }) {
+    return this.request<Placement>('/api/taxonomy/placements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+  }
+
+  workspace() {
+    return this.request<UserWorkspace>('/api/workspace')
+  }
+
+  saveMedia(bookId: string) {
+    return this.request('/api/workspace/saved/' + bookId, { method: 'POST' })
+  }
+
+  unsaveMedia(bookId: string) {
+    return this.request<void>('/api/workspace/saved/' + bookId, { method: 'DELETE' })
+  }
+
+  users() {
+    return this.request<User[]>('/api/auth/users')
+  }
+
+  createUser(payload: UserCreatePayload) {
+    return this.request<User>('/api/auth/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+  }
+
+  updateUserStatus(userId: string, isActive: boolean) {
+    return this.request<User>(`/api/auth/users/${userId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive })
+    })
+  }
+
+  updateUserPassword(userId: string, password: string) {
+    return this.request<User>(`/api/auth/users/${userId}/password`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    })
+  }
+
+  updateUserRole(userId: string, role: string) {
+    return this.request<User>(`/api/auth/users/${userId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role })
+    })
+  }
+
+  deleteUser(userId: string) {
+    return this.request<void>(`/api/auth/users/${userId}`, { method: 'DELETE' })
+  }
+
+  changeOwnPassword(currentPassword: string, newPassword: string) {
+    return this.request<User>('/api/auth/me/password', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+    })
   }
 
   books(query = '') {

@@ -24,6 +24,10 @@ services:
       OCR_LANGUAGE: ${OCR_LANGUAGE:-deu+eng}
       STORAGE_DIR: /data/books
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-2048}
+      ROOT_ADMIN_EMAIL: ${ROOT_ADMIN_EMAIL:-}
+      ROOT_ADMIN_PASSWORD: ${ROOT_ADMIN_PASSWORD:-}
+      ROOT_ADMIN_FULL_NAME: ${ROOT_ADMIN_FULL_NAME:-Root Administrator}
+      ROOT_ADMIN_UPDATE_PASSWORD: ${ROOT_ADMIN_UPDATE_PASSWORD:-false}
     volumes:
       - ./storage/books:/data/books
     ports:

@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("/data/books")
     ocr_language: str = "deu+eng"
     max_upload_mb: int = 2048
+    root_admin_email: str | None = None
+    root_admin_password: str | None = None
+    root_admin_full_name: str = "Root Administrator"
+    root_admin_update_password: bool = False
 
 
 @lru_cache
