@@ -71,7 +71,7 @@ npm run dev
 
 ## Rechtliches und Lizenz
 
-Dieses Repository steht unter MIT-Lizenz. Da kein Paperless-ngx-Code übernommen wurde, entsteht daraus keine GPL-Pflicht. Wenn ihr später Code direkt aus Paperless-ngx übernehmt oder das Projekt als Fork aufsetzt, muss die Lizenzkompatibilität neu bewertet werden; Paperless-ngx steht unter GPL-3.0.
+Dieses Repository steht unter MIT-Lizenz. 
 
 Bei medizinischen Fachbüchern sind Urheber- und Verlagsrechte unabhängig von der Softwarelizenz zu prüfen. Für eine Klinikbibliothek sollten nur rechtmäßig lizenzierte PDFs importiert und nur berechtigten Nutzer:innen zugänglich gemacht werden.
 
