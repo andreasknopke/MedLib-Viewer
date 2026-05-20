@@ -26,14 +26,27 @@ app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"]
 
 @app.on_event("startup")
 def startup() -> None:
+    import logging
     from alembic.config import Config as AlembicConfig
     from alembic import command as alembic_command
 
-    alembic_cfg = AlembicConfig("alembic.ini")
-    alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
-    alembic_command.upgrade(alembic_cfg, "head")
+    log = logging.getLogger("medlib.startup")
+    try:
+        alembic_cfg = AlembicConfig("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+        log.info("Running Alembic upgrade to head …")
+        alembic_command.upgrade(alembic_cfg, "head")
+        log.info("Alembic upgrade completed.")
+    except Exception:
+        log.exception("Alembic migration failed – falling back to create_all")
+        from app.database import Base, engine
+        Base.metadata.create_all(bind=engine)
 
-    ensure_root_admin()
+    try:
+        ensure_root_admin()
+        log.info("Root admin check completed.")
+    except Exception:
+        log.exception("Root admin bootstrap failed")
 
 
 @app.get("/api/health")

@@ -21,6 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    # ── Create enum types first ──
+    op.execute("CREATE TYPE role AS ENUM ('admin', 'librarian', 'clinician', 'reader')")
+    op.execute("CREATE TYPE mediatype AS ENUM ('book', 'journal')")
+    op.execute("CREATE TYPE ocrstatus AS ENUM ('pending', 'running', 'completed', 'failed')")
+
     # ── users ──
     op.create_table(
         'users',
@@ -28,7 +33,7 @@ def upgrade() -> None:
         sa.Column('email', sa.String(320), unique=True, nullable=False, index=True),
         sa.Column('full_name', sa.String(200), nullable=False),
         sa.Column('hashed_password', sa.String(255), nullable=False),
-        sa.Column('role', sa.Enum('admin', 'librarian', 'clinician', 'reader', name='role'), nullable=False),
+        sa.Column('role', sa.Enum('admin', 'librarian', 'clinician', 'reader', name='role', create_type=False), nullable=False),
         sa.Column('is_active', sa.Boolean(), server_default=sa.text('true'), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
     )
@@ -45,7 +50,7 @@ def upgrade() -> None:
         sa.Column('year', sa.Integer()),
         sa.Column('edition', sa.String(120)),
         sa.Column('specialty', sa.String(180), index=True),
-        sa.Column('media_type', sa.Enum('book', 'journal', name='mediatype'), server_default='book', nullable=False, index=True),
+        sa.Column('media_type', sa.Enum('book', 'journal', name='mediatype', create_type=False), server_default='book', nullable=False, index=True),
         sa.Column('language', sa.String(16), server_default='de', nullable=False),
         sa.Column('tags', JSONB(), server_default='[]', nullable=False),
         sa.Column('source_filename', sa.String(500), nullable=False),
@@ -115,7 +120,7 @@ def upgrade() -> None:
         'ocr_jobs',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('book_id', UUID(as_uuid=True), sa.ForeignKey('books.id', ondelete='CASCADE'), nullable=False, index=True),
-        sa.Column('status', sa.Enum('pending', 'running', 'completed', 'failed', name='ocrstatus'), server_default='pending', nullable=False, index=True),
+        sa.Column('status', sa.Enum('pending', 'running', 'completed', 'failed', name='ocrstatus', create_type=False), server_default='pending', nullable=False, index=True),
         sa.Column('progress', sa.Integer(), server_default='0', nullable=False),
         sa.Column('message', sa.Text()),
         sa.Column('created_at', sa.DateTime(), nullable=False),
