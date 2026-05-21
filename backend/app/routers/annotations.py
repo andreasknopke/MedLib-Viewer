@@ -60,3 +60,12 @@ def create_highlight(payload: HighlightCreate, db: Session = Depends(get_db), us
     db.commit()
     db.refresh(highlight)
     return highlight
+
+
+@router.delete("/highlights/{highlight_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_highlight(highlight_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    highlight = db.get(Highlight, highlight_id)
+    if not highlight or highlight.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Highlight not found")
+    db.delete(highlight)
+    db.commit()

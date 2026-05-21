@@ -3115,17 +3115,32 @@ function Reader({
             <section>
               <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Markierungen</h4>
               {highlights.map((highlight) => (
-                <button
+                <div
                   key={highlight.id}
-                  className="mb-1 block w-full rounded-md bg-amber-50 px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-amber-100"
-                  onClick={() => setPageNumber(highlight.page_number)}
-                  type="button"
+                  className="mb-1 flex items-start gap-1 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-slate-700 hover:bg-amber-100"
                 >
-                  <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                    Seite {highlight.page_number}
-                  </span>
-                  {highlight.selected_text}
-                </button>
+                  <button
+                    className="flex-1 text-left"
+                    onClick={() => setPageNumber(highlight.page_number)}
+                    type="button"
+                  >
+                    <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      Seite {highlight.page_number}
+                    </span>
+                    {highlight.selected_text}
+                  </button>
+                  <button
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-amber-700 hover:bg-amber-200"
+                    title="Markierung löschen"
+                    onClick={async () => {
+                      await api.deleteHighlight(highlight.id)
+                      setHighlights((current) => current.filter((h) => h.id !== highlight.id))
+                    }}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
               {!highlights.length && <p className="muted">Noch keine Markierungen.</p>}
             </section>
@@ -3215,7 +3230,8 @@ function PdfCanvasViewer({
     let cancelTextLayer = false
 
     setRendering(true)
-    onTextSelect(null)
+    onTextSelectRef.current(null)
+    if (matchLayerRef.current) matchLayerRef.current.replaceChildren()
 
     void pdfDocument.getPage(pageNumber).then((page) => {
       if (!active) return
@@ -3296,15 +3312,17 @@ function PdfCanvasViewer({
       cancelTextLayer = true
       cancelRender?.()
     }
-  }, [containerSize.width, containerSize.height, fitMode, layout, onTextSelect, pageNumber, pdfDocument, zoom])
+  }, [containerSize.width, containerSize.height, fitMode, layout, pageNumber, pdfDocument, zoom])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   function paintMatches() {
     const layer = textLayerRef.current
     const matchLayer = matchLayerRef.current
     if (!layer || !matchLayer) return
     matchLayer.replaceChildren()
-    const term = (matchTerm ?? '').trim()
-    if (!term) return    // Build tokens: split on whitespace, strip wildcards/operators
+    const term = (matchTermRef.current ?? '').trim()
+    if (!term) return
+    // Build tokens: split on whitespace, strip wildcards/operators
     const tokens = term
       .split(/\s+/)
       .map((token) => token.replace(/^[-!]+/, '').replace(/[*]+$/, ''))
@@ -3314,24 +3332,28 @@ function PdfCanvasViewer({
       `(${tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
       'gi',
     )
-    const layerRect = layer.getBoundingClientRect()
-    if (layerRect.width <= 0 || layerRect.height <= 0) return
-    const spans = layer.querySelectorAll('span')
-    for (const span of Array.from(spans)) {
-      const text = span.textContent ?? ''
-      if (!text) continue
-      pattern.lastIndex = 0
-      if (!pattern.test(text)) continue
-      const rect = span.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) continue
-      const box = document.createElement('div')
-      box.className = 'pdf-matchBox'
-      box.style.left = `${((rect.left - layerRect.left) / layerRect.width) * 100}%`
-      box.style.top = `${((rect.top - layerRect.top) / layerRect.height) * 100}%`
-      box.style.width = `${(rect.width / layerRect.width) * 100}%`
-      box.style.height = `${(rect.height / layerRect.height) * 100}%`
-      matchLayer.appendChild(box)
-    }
+    requestAnimationFrame(() => {
+      const layerRect = layer.getBoundingClientRect()
+      if (layerRect.width <= 0 || layerRect.height <= 0) return
+      const spans = layer.querySelectorAll('span')
+      for (const span of Array.from(spans)) {
+        const text = span.textContent ?? ''
+        if (!text) continue
+        pattern.lastIndex = 0
+        if (!pattern.test(text)) continue
+        const rect = span.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) continue
+        // Ignore degenerate (e.g. collapsed) spans that report top=0 across the page width
+        if (rect.width > layerRect.width * 0.9 && rect.height < 4) continue
+        const box = document.createElement('div')
+        box.className = 'pdf-matchBox'
+        box.style.left = `${((rect.left - layerRect.left) / layerRect.width) * 100}%`
+        box.style.top = `${((rect.top - layerRect.top) / layerRect.height) * 100}%`
+        box.style.width = `${(rect.width / layerRect.width) * 100}%`
+        box.style.height = `${(rect.height / layerRect.height) * 100}%`
+        matchLayer.appendChild(box)
+      }
+    })
   }
 
   function handleMouseUp() {
@@ -3367,7 +3389,7 @@ function PdfCanvasViewer({
       return
     }
 
-    onTextSelect({
+    onTextSelectRef.current({
       text,
       locator: {
         page_number: pageNumber,
@@ -3378,6 +3400,19 @@ function PdfCanvasViewer({
 
   const [areaRect, setAreaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const areaStartRef = useRef<{ x: number; y: number } | null>(null)
+  const onTextSelectRef = useRef(onTextSelect)
+  useEffect(() => {
+    onTextSelectRef.current = onTextSelect
+  }, [onTextSelect])
+  const matchTermRef = useRef(matchTerm)
+  useEffect(() => {
+    matchTermRef.current = matchTerm
+  }, [matchTerm])
+
+  useEffect(() => {
+    paintMatches()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchTerm])
 
   function handleAreaMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
     if (!allowAreaSelect) return
@@ -3419,7 +3454,7 @@ function PdfCanvasViewer({
       setAreaRect(null)
       return
     }
-    onTextSelect({
+    onTextSelectRef.current({
       text: '',
       locator: {
         page_number: pageNumber,

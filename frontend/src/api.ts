@@ -287,6 +287,10 @@ export class ApiClient {
     })
   }
 
+  deleteHighlight(highlightId: string) {
+    return this.request<void>(`/api/annotations/highlights/${highlightId}`, { method: 'DELETE' })
+  }
+
   inspectBook(file: File) {
     const formData = new FormData()
     formData.append('file', file)
