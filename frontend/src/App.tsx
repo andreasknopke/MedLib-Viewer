@@ -3289,7 +3289,7 @@ function PdfCanvasViewer({
       const task = page.render({ canvas, canvasContext: context, viewport })
       cancelRender = () => task.cancel()
       void page
-        .getTextContent({ includeMarkedContent: true, disableNormalization: true })
+        .getTextContent({ disableNormalization: true })
         .then((textContent) => {
           if (cancelTextLayer || !textLayerRef.current) return
           const textLayer = new TextLayer({
@@ -3329,29 +3329,45 @@ function PdfCanvasViewer({
       .filter((token) => token.length >= 3 && token.toLowerCase() !== 'or')
     if (!tokens.length) return
     const pattern = new RegExp(
-      `(${tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+      tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
       'gi',
     )
     requestAnimationFrame(() => {
       const layerRect = layer.getBoundingClientRect()
       if (layerRect.width <= 0 || layerRect.height <= 0) return
-      const spans = layer.querySelectorAll('span')
-      for (const span of Array.from(spans)) {
-        const text = span.textContent ?? ''
-        if (!text) continue
-        pattern.lastIndex = 0
-        if (!pattern.test(text)) continue
-        const rect = span.getBoundingClientRect()
-        if (rect.width <= 0 || rect.height <= 0) continue
-        // Ignore degenerate (e.g. collapsed) spans that report top=0 across the page width
-        if (rect.width > layerRect.width * 0.9 && rect.height < 4) continue
-        const box = document.createElement('div')
-        box.className = 'pdf-matchBox'
-        box.style.left = `${((rect.left - layerRect.left) / layerRect.width) * 100}%`
-        box.style.top = `${((rect.top - layerRect.top) / layerRect.height) * 100}%`
-        box.style.width = `${(rect.width / layerRect.width) * 100}%`
-        box.style.height = `${(rect.height / layerRect.height) * 100}%`
-        matchLayer.appendChild(box)
+      // Walk all text nodes inside the text layer and create precise ranges for each match.
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+      const range = document.createRange()
+      let node: Node | null = walker.nextNode()
+      while (node) {
+        const text = node.nodeValue ?? ''
+        if (text.length >= 3) {
+          pattern.lastIndex = 0
+          let match: RegExpExecArray | null
+          while ((match = pattern.exec(text)) !== null) {
+            const start = match.index
+            const end = start + match[0].length
+            try {
+              range.setStart(node, start)
+              range.setEnd(node, end)
+            } catch {
+              break
+            }
+            for (const rect of Array.from(range.getClientRects())) {
+              if (rect.width <= 0 || rect.height <= 0) continue
+              if (rect.width > layerRect.width * 0.9) continue
+              const box = document.createElement('div')
+              box.className = 'pdf-matchBox'
+              box.style.left = `${((rect.left - layerRect.left) / layerRect.width) * 100}%`
+              box.style.top = `${((rect.top - layerRect.top) / layerRect.height) * 100}%`
+              box.style.width = `${(rect.width / layerRect.width) * 100}%`
+              box.style.height = `${(rect.height / layerRect.height) * 100}%`
+              matchLayer.appendChild(box)
+            }
+            if (match.index === pattern.lastIndex) pattern.lastIndex += 1
+          }
+        }
+        node = walker.nextNode()
       }
     })
   }
