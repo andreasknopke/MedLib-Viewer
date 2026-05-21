@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
+from pdf2image import convert_from_path
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -17,13 +18,19 @@ from app.metadata import lookup_metadata, ocr_cover_text
 from app.models import Book, BookPage, MediaType, OcrJob, Role, User
 from app.ocr import count_pdf_pages, run_ocr_job
 from app.schemas import BookRead, OcrJobRead, PageRead, SearchHit
-from app.security import get_current_user, require_roles
+from app.security import get_current_user, get_current_user_for_asset, require_roles
 
 router = APIRouter()
 
 
 def _inspect_dir() -> Path:
     path = get_settings().storage_dir / "_pending"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _cover_dir() -> Path:
+    path = get_settings().storage_dir / "_covers"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -323,13 +330,42 @@ def get_page(
 
 
 @router.get("/{book_id}/file")
-def download_book(book_id: UUID, db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> FileResponse:
+def download_book(book_id: UUID, db: Session = Depends(get_db), _: User = Depends(get_current_user_for_asset)) -> FileResponse:
     book = db.get(Book, book_id)
     if not book:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
     if not book.is_downloadable:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Download disabled")
     return FileResponse(book.storage_path, filename=book.source_filename, media_type="application/pdf")
+
+
+@router.get("/{book_id}/cover")
+def get_book_cover(book_id: UUID, db: Session = Depends(get_db), _: User = Depends(get_current_user_for_asset)) -> FileResponse:
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+
+    cover_path = _cover_dir() / f"{book.id}.jpg"
+    if not cover_path.exists():
+        try:
+            images = convert_from_path(
+                book.storage_path,
+                dpi=110,
+                first_page=1,
+                last_page=1,
+                fmt="jpeg",
+                thread_count=1,
+                size=(360, None),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cover preview not available") from exc
+
+        if not images:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cover preview not available")
+
+        images[0].save(cover_path, format="JPEG", quality=82, optimize=True)
+
+    return FileResponse(cover_path, media_type="image/jpeg")
 
 
 @router.post("/{book_id}/ocr", response_model=OcrJobRead)

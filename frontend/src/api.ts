@@ -44,6 +44,10 @@ export interface CommitBookPayload {
 export class ApiClient {
   token = localStorage.getItem('medlib.token') ?? ''
 
+  assetToken() {
+    return this.token ? `access_token=${encodeURIComponent(this.token)}` : ''
+  }
+
   async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers = new Headers(options.headers)
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
@@ -271,6 +275,17 @@ export class ApiClient {
     link.download = book.source_filename
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  bookFileUrl(book: Book, page?: number) {
+    const query = this.assetToken()
+    const fragment = page ? `#page=${page}` : ''
+    return `${API_BASE}/api/books/${book.id}/file${query ? `?${query}` : ''}${fragment}`
+  }
+
+  bookCoverUrl(book: Book) {
+    const query = this.assetToken()
+    return `${API_BASE}/api/books/${book.id}/cover${query ? `?${query}` : ''}`
   }
 }
 

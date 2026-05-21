@@ -54,10 +54,17 @@ function App() {
       .me()
       .then((loadedUser) => {
         setUser(loadedUser)
-        return Promise.all([loadBooks(), loadDashboard(), loadWorkspace()])
+        return Promise.all([loadBooks(), loadWorkspace()])
       })
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    if (!user) return
+    if (activeView !== 'admin') return
+    if (user.role !== 'admin' && user.role !== 'librarian') return
+    void loadDashboard()
+  }, [activeView, user])
 
   async function loadBooks() {
     setBooks(await api.books())
@@ -1735,6 +1742,20 @@ function coverGradient(book: Book) {
 
 function BookCover({ book, compact = false }: { book: Book; compact?: boolean }) {
   const dimensions = compact ? 'h-14 w-10' : 'h-28 w-20'
+  const [imageFailed, setImageFailed] = useState(false)
+
+  if (!imageFailed) {
+    return (
+      <img
+        src={api.bookCoverUrl(book)}
+        alt={`Cover von ${book.title}`}
+        className={`cover ${dimensions} shrink-0 object-cover`}
+        loading="lazy"
+        onError={() => setImageFailed(true)}
+      />
+    )
+  }
+
   const titleSize = compact ? 'text-[8px]' : 'text-[10px]'
   return (
     <div
@@ -2008,10 +2029,10 @@ function Reader({
           </button>
         </div>
       </div>
-      <div className="grid lg:grid-cols-[1fr_18rem]">
-        <article className="min-h-[36rem] border-r border-slate-100 bg-slate-50 p-5">
-          <div className="mx-auto max-w-3xl rounded-md border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between text-xs">
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <article className="min-h-[36rem] border-r border-slate-100 bg-slate-50 p-4 lg:p-5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs">
               <button
                 disabled={pageNumber <= 1}
                 onClick={() => setPageNumber(pageNumber - 1)}
@@ -2030,14 +2051,25 @@ function Reader({
                 Weiter
               </button>
             </div>
-            <div
-              className="reader-text whitespace-pre-wrap text-sm leading-7 text-slate-800"
-              onMouseUp={saveHighlight}
-              dangerouslySetInnerHTML={{ __html: markedText }}
-            />
+            <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+              <iframe
+                key={`${book.id}-${pageNumber}`}
+                src={api.bookFileUrl(book, pageNumber)}
+                title={`PDF-Ansicht ${book.title}`}
+                className="h-[70vh] min-h-[40rem] w-full"
+              />
+            </div>
           </div>
         </article>
         <aside className="space-y-4 p-4">
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
+            <div
+              className="reader-text max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800"
+              onMouseUp={saveHighlight}
+              dangerouslySetInnerHTML={{ __html: markedText }}
+            />
+          </section>
           <button className="btn btn-primary w-full" onClick={saveBookmark} type="button">
             Lesezeichen setzen
           </button>
