@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import {
   Activity,
   BookOpen,
@@ -2962,6 +2962,7 @@ function Reader({
                 layout={layout}
                 highlights={currentPageHighlights}
                 matchTerm={matchTerm}
+                allowAreaSelect={!hasEmbeddedText}
                 onTextSelect={(selection) => setPendingHighlight(selection)}
               />
               {layout === 'double' && pageNumber + 1 <= pageCount && (
@@ -2973,6 +2974,7 @@ function Reader({
                   layout={layout}
                   highlights={secondPageHighlights}
                   matchTerm={matchTerm}
+                  allowAreaSelect={!hasEmbeddedText}
                   onTextSelect={(selection) => setPendingHighlight(selection)}
                 />
               )}
@@ -3080,6 +3082,7 @@ function PdfCanvasViewer({
   layout,
   highlights,
   matchTerm,
+  allowAreaSelect,
   onTextSelect,
 }: {
   pdfDocument: PDFDocumentProxy
@@ -3089,6 +3092,7 @@ function PdfCanvasViewer({
   layout: PageLayout
   highlights: Highlight[]
   matchTerm?: string
+  allowAreaSelect?: boolean
   onTextSelect: (selection: {
     text: string
     locator: {
@@ -3292,6 +3296,59 @@ function PdfCanvasViewer({
     })
   }
 
+  const [areaRect, setAreaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const areaStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  function handleAreaMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!allowAreaSelect) return
+    if (event.button !== 0) return
+    const page = pageRef.current
+    if (!page) return
+    const rect = page.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const x = (event.clientX - rect.left) / rect.width
+    const y = (event.clientY - rect.top) / rect.height
+    areaStartRef.current = { x, y }
+    setAreaRect({ left: x, top: y, width: 0, height: 0 })
+    event.preventDefault()
+  }
+
+  function handleAreaMouseMove(event: ReactMouseEvent<HTMLDivElement>) {
+    const start = areaStartRef.current
+    if (!start) return
+    const page = pageRef.current
+    if (!page) return
+    const rect = page.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const x = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
+    const y = Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1)
+    setAreaRect({
+      left: Math.min(start.x, x),
+      top: Math.min(start.y, y),
+      width: Math.abs(x - start.x),
+      height: Math.abs(y - start.y),
+    })
+  }
+
+  function handleAreaMouseUp() {
+    const start = areaStartRef.current
+    areaStartRef.current = null
+    if (!start) return
+    const rect = areaRect
+    if (!rect || rect.width < 0.01 || rect.height < 0.01) {
+      setAreaRect(null)
+      return
+    }
+    onTextSelect({
+      text: `Bereich Seite ${pageNumber}`,
+      locator: {
+        page_number: pageNumber,
+        rects: [rect],
+      },
+    })
+    setAreaRect(null)
+  }
+
   return (
     <div ref={wrapperRef} className="pdf-canvas-wrap">
       {rendering && <div className="pdf-rendering">Seite wird gerendert …</div>}
@@ -3299,6 +3356,27 @@ function PdfCanvasViewer({
         <canvas ref={canvasRef} className="pdf-canvas" />
         <div ref={textLayerRef} className="pdf-textLayer textLayer" onMouseUp={handleMouseUp} />
         <div ref={matchLayerRef} className="pdf-matchLayer" />
+        {allowAreaSelect && (
+          <div
+            className="pdf-areaLayer"
+            onMouseDown={handleAreaMouseDown}
+            onMouseMove={handleAreaMouseMove}
+            onMouseUp={handleAreaMouseUp}
+            onMouseLeave={handleAreaMouseUp}
+          >
+            {areaRect && (
+              <div
+                className="pdf-areaBox"
+                style={{
+                  left: `${areaRect.left * 100}%`,
+                  top: `${areaRect.top * 100}%`,
+                  width: `${areaRect.width * 100}%`,
+                  height: `${areaRect.height * 100}%`,
+                }}
+              />
+            )}
+          </div>
+        )}
         <div className="pdf-highlightLayer">
           {highlights.flatMap((highlight) =>
             (highlight.locator?.rects ?? []).map((rect, index) => (

@@ -513,6 +513,22 @@ button:disabled {
   100% { background: rgba(250, 204, 21, 0.45); }
 }
 
+.pdf-areaLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  cursor: crosshair;
+  background: transparent;
+}
+
+.pdf-areaBox {
+  position: absolute;
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px dashed rgba(37, 99, 235, 0.75);
+  border-radius: 0.15rem;
+  pointer-events: none;
+}
+
 .pdf-status,
 .pdf-rendering {
   display: flex;
