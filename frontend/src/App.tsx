@@ -2674,14 +2674,19 @@ function Reader({
         }
         setPdfDocument(document)
         setPageNumber((current) => Math.min(Math.max(initialPage ?? current, 1), document.numPages))
-        // Detect embedded text by sampling first page's textContent
+        // Detect embedded text by sampling up to the first 5 pages (cover may be image-only).
         try {
-          const firstPage = await document.getPage(1)
-          const textContent = await firstPage.getTextContent()
-          const totalChars = textContent.items.reduce(
-            (sum, item) => sum + (('str' in item && typeof item.str === 'string') ? item.str.length : 0),
-            0,
-          )
+          let totalChars = 0
+          const sampleCount = Math.min(document.numPages, 5)
+          for (let i = 1; i <= sampleCount; i += 1) {
+            const page = await document.getPage(i)
+            const textContent = await page.getTextContent()
+            totalChars += textContent.items.reduce(
+              (sum, item) => sum + (('str' in item && typeof item.str === 'string') ? item.str.length : 0),
+              0,
+            )
+            if (totalChars > 80) break
+          }
           if (active) setHasEmbeddedText(totalChars > 80)
         } catch {
           if (active) setHasEmbeddedText(false)
@@ -2816,13 +2821,14 @@ function Reader({
       setOcrRunning(false)
       return
     }
+    const trimmed = selection.text.trim()
     // Text selection from text-PDF: just set it.
-    if (selection.text && selection.text.trim()) {
-      setPendingHighlight(selection)
+    if (trimmed) {
+      setPendingHighlight({ ...selection, text: trimmed })
       setOcrRunning(false)
       return
     }
-    // Area selection (no text yet) – trigger backend OCR on the cropped region.
+    // Area/marquee selection (no text) – trigger backend OCR on the cropped region.
     const rect = selection.locator.rects[0]
     if (!rect) return
     setPendingHighlight({ ...selection, text: '' })
@@ -3414,7 +3420,7 @@ function PdfCanvasViewer({
       return
     }
     onTextSelect({
-      text: `Bereich Seite ${pageNumber}`,
+      text: '',
       locator: {
         page_number: pageNumber,
         rects: [rect],
@@ -3430,17 +3436,19 @@ function PdfCanvasViewer({
         <canvas ref={canvasRef} className="pdf-canvas" />
         <div ref={textLayerRef} className="pdf-textLayer textLayer" onMouseUp={handleMouseUp} />
         <div ref={matchLayerRef} className="pdf-matchLayer" />
-        {pendingHighlight && pendingHighlight.locator.page_number === pageNumber && pendingHighlight.locator.rects[0] && (
-          <div
-            className="pdf-pendingBox"
-            style={{
-              left: `${pendingHighlight.locator.rects[0].left * 100}%`,
-              top: `${pendingHighlight.locator.rects[0].top * 100}%`,
-              width: `${pendingHighlight.locator.rects[0].width * 100}%`,
-              height: `${pendingHighlight.locator.rects[0].height * 100}%`,
-            }}
-          />
-        )}
+        {pendingHighlight && pendingHighlight.locator.page_number === pageNumber &&
+          pendingHighlight.locator.rects.map((rect, index) => (
+            <div
+              key={`pending-${index}`}
+              className="pdf-pendingBox"
+              style={{
+                left: `${rect.left * 100}%`,
+                top: `${rect.top * 100}%`,
+                width: `${rect.width * 100}%`,
+                height: `${rect.height * 100}%`,
+              }}
+            />
+          ))}
         {allowAreaSelect && (
           <div
             className="pdf-areaLayer"
