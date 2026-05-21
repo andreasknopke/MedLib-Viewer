@@ -2649,6 +2649,7 @@ function Reader({
       rects: Array<{ left: number; top: number; width: number; height: number }>
     }
   } | null>(null)
+  const [ocrRunning, setOcrRunning] = useState(false)
   const [notes, setNotes] = useState<Note[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
@@ -2788,14 +2789,57 @@ function Reader({
 
   async function saveHighlight() {
     if (!pendingHighlight) return
+    const text = pendingHighlight.text.trim()
+    if (!text) return
     const highlight = await api.createHighlightWithLocator(
       book.id,
       pendingHighlight.locator.page_number,
-      pendingHighlight.text,
+      text,
       pendingHighlight.locator,
     )
     setHighlights([highlight, ...highlights])
     setPendingHighlight(null)
+    setOcrRunning(false)
+  }
+
+  async function handleSelection(
+    selection: {
+      text: string
+      locator: {
+        page_number: number
+        rects: Array<{ left: number; top: number; width: number; height: number }>
+      }
+    } | null,
+  ) {
+    if (!selection) {
+      setPendingHighlight(null)
+      setOcrRunning(false)
+      return
+    }
+    // Text selection from text-PDF: just set it.
+    if (selection.text && selection.text.trim()) {
+      setPendingHighlight(selection)
+      setOcrRunning(false)
+      return
+    }
+    // Area selection (no text yet) – trigger backend OCR on the cropped region.
+    const rect = selection.locator.rects[0]
+    if (!rect) return
+    setPendingHighlight({ ...selection, text: '' })
+    setOcrRunning(true)
+    try {
+      const result = await api.ocrRegion(book.id, selection.locator.page_number, rect)
+      const text = (result.text || '').trim()
+      setPendingHighlight((current) =>
+        current ? { ...current, text: text || '(Kein Text im Bereich erkannt)' } : current,
+      )
+    } catch (error) {
+      setPendingHighlight((current) =>
+        current ? { ...current, text: error instanceof Error ? `OCR-Fehler: ${error.message}` : 'OCR-Fehler' } : current,
+      )
+    } finally {
+      setOcrRunning(false)
+    }
   }
 
   async function toggleFullscreen() {
@@ -2963,7 +3007,8 @@ function Reader({
                 highlights={currentPageHighlights}
                 matchTerm={matchTerm}
                 allowAreaSelect={!hasEmbeddedText}
-                onTextSelect={(selection) => setPendingHighlight(selection)}
+                pendingHighlight={pendingHighlight}
+                onTextSelect={handleSelection}
               />
               {layout === 'double' && pageNumber + 1 <= pageCount && (
                 <PdfCanvasViewer
@@ -2975,7 +3020,8 @@ function Reader({
                   highlights={secondPageHighlights}
                   matchTerm={matchTerm}
                   allowAreaSelect={!hasEmbeddedText}
-                  onTextSelect={(selection) => setPendingHighlight(selection)}
+                  pendingHighlight={pendingHighlight}
+                  onTextSelect={handleSelection}
                 />
               )}
             </div>
@@ -3001,10 +3047,26 @@ function Reader({
               <h4 className="mb-1.5 text-xs font-semibold text-slate-900">PDF-Markierung</h4>
               {pendingHighlight ? (
                 <>
-                  <p className="line-clamp-3 text-xs leading-5 text-slate-700">{pendingHighlight.text}</p>
+                  {ocrRunning && (
+                    <p className="mb-1.5 text-[11px] text-amber-700">OCR läuft … Text wird aus dem markierten Bereich extrahiert.</p>
+                  )}
+                  <textarea
+                    className="w-full text-xs leading-5"
+                    rows={4}
+                    value={pendingHighlight.text}
+                    onChange={(event) =>
+                      setPendingHighlight((current) => (current ? { ...current, text: event.target.value } : current))
+                    }
+                    placeholder={ocrRunning ? 'OCR läuft …' : 'Markierungstext'}
+                  />
                   <div className="mt-2 flex gap-2">
-                    <button className="btn btn-sm btn-primary" onClick={saveHighlight} type="button">
-                      Markierung speichern
+                    <button
+                      className="btn btn-primary flex-1"
+                      onClick={saveHighlight}
+                      type="button"
+                      disabled={ocrRunning || !pendingHighlight.text.trim()}
+                    >
+                      Als Highlight speichern
                     </button>
                     <button className="btn btn-sm btn-secondary" onClick={() => setPendingHighlight(null)} type="button">
                       Verwerfen
@@ -3012,7 +3074,11 @@ function Reader({
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-slate-600">Text direkt im PDF markieren, dann hier speichern.</p>
+                <p className="text-xs text-slate-600">
+                  {hasEmbeddedText
+                    ? 'Text direkt im PDF markieren, dann hier als Highlight speichern.'
+                    : 'Bereich im PDF mit der Maus aufziehen – der Text wird automatisch per OCR erkannt.'}
+                </p>
               )}
             </section>
             <section>
@@ -3083,6 +3149,7 @@ function PdfCanvasViewer({
   highlights,
   matchTerm,
   allowAreaSelect,
+  pendingHighlight,
   onTextSelect,
 }: {
   pdfDocument: PDFDocumentProxy
@@ -3093,6 +3160,13 @@ function PdfCanvasViewer({
   highlights: Highlight[]
   matchTerm?: string
   allowAreaSelect?: boolean
+  pendingHighlight?: {
+    text: string
+    locator: {
+      page_number: number
+      rects: Array<{ left: number; top: number; width: number; height: number }>
+    }
+  } | null
   onTextSelect: (selection: {
     text: string
     locator: {
@@ -3356,6 +3430,17 @@ function PdfCanvasViewer({
         <canvas ref={canvasRef} className="pdf-canvas" />
         <div ref={textLayerRef} className="pdf-textLayer textLayer" onMouseUp={handleMouseUp} />
         <div ref={matchLayerRef} className="pdf-matchLayer" />
+        {pendingHighlight && pendingHighlight.locator.page_number === pageNumber && pendingHighlight.locator.rects[0] && (
+          <div
+            className="pdf-pendingBox"
+            style={{
+              left: `${pendingHighlight.locator.rects[0].left * 100}%`,
+              top: `${pendingHighlight.locator.rects[0].top * 100}%`,
+              width: `${pendingHighlight.locator.rects[0].width * 100}%`,
+              height: `${pendingHighlight.locator.rects[0].height * 100}%`,
+            }}
+          />
+        )}
         {allowAreaSelect && (
           <div
             className="pdf-areaLayer"

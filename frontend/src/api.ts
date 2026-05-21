@@ -279,6 +279,14 @@ export class ApiClient {
     return this.request<Book>('/api/books', { method: 'POST', body: formData })
   }
 
+  ocrRegion(bookId: string, pageNumber: number, rect: { left: number; top: number; width: number; height: number }) {
+    return this.request<{ text: string }>(`/api/books/${bookId}/ocr-region`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page_number: pageNumber, ...rect }),
+    })
+  }
+
   inspectBook(file: File) {
     const formData = new FormData()
     formData.append('file', file)

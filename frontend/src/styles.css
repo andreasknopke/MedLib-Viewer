@@ -529,6 +529,22 @@ button:disabled {
   pointer-events: none;
 }
 
+.pdf-pendingBox {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(250, 204, 21, 0.35);
+  border: 2px solid rgba(217, 119, 6, 0.85);
+  border-radius: 0.15rem;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.25);
+  animation: pdf-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pdf-pending-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.25); }
+  50% { box-shadow: 0 0 0 6px rgba(250, 204, 21, 0.45); }
+}
+
 .pdf-status,
 .pdf-rendering {
   display: flex;

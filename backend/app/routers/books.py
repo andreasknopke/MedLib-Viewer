@@ -476,6 +476,76 @@ def get_book_cover(book_id: UUID, db: Session = Depends(get_db), _: User = Depen
     return FileResponse(cover_path, media_type="image/jpeg")
 
 
+class OcrRegionRequest(BaseModel):
+    page_number: int
+    left: float
+    top: float
+    width: float
+    height: float
+
+
+class OcrRegionResponse(BaseModel):
+    text: str
+
+
+@router.post("/{book_id}/ocr-region", response_model=OcrRegionResponse)
+async def ocr_region(
+    book_id: UUID,
+    payload: OcrRegionRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> OcrRegionResponse:
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    if payload.page_number < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid page number")
+    # Clamp rect to [0, 1]
+    left = max(0.0, min(1.0, payload.left))
+    top = max(0.0, min(1.0, payload.top))
+    width = max(0.0, min(1.0 - left, payload.width))
+    height = max(0.0, min(1.0 - top, payload.height))
+    if width <= 0 or height <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty region")
+
+    settings = get_settings()
+    storage_path = Path(book.storage_path)
+
+    def _render_and_ocr() -> str:
+        import pytesseract  # local import; module loaded at startup elsewhere
+
+        images = convert_from_path(
+            storage_path,
+            dpi=300,
+            first_page=payload.page_number,
+            last_page=payload.page_number,
+            fmt="png",
+            thread_count=1,
+        )
+        if not images:
+            return ""
+        image = images[0]
+        w, h = image.size
+        box = (
+            int(left * w),
+            int(top * h),
+            int((left + width) * w),
+            int((top + height) * h),
+        )
+        # Guard against degenerate crops
+        if box[2] - box[0] < 4 or box[3] - box[1] < 4:
+            return ""
+        cropped = image.crop(box)
+        try:
+            text = pytesseract.image_to_string(cropped, lang=settings.ocr_language)
+        except pytesseract.TesseractError:
+            text = pytesseract.image_to_string(cropped, lang="eng")
+        return text.strip()
+
+    text = await run_in_threadpool(_render_and_ocr)
+    return OcrRegionResponse(text=text)
+
+
 @router.post("/{book_id}/ocr", response_model=OcrJobRead)
 def queue_ocr(
     book_id: UUID,
