@@ -8,8 +8,10 @@ import {
   Download,
   FileUp,
   FolderTree,
+  LayoutDashboard,
   Library,
   LogOut,
+  Menu,
   Minus,
   Plus,
   Search,
@@ -18,10 +20,11 @@ import {
   Sparkles,
   Star,
   Users,
+  X,
 } from 'lucide-react'
 import { GlobalWorkerOptions, TextLayer, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { api } from './api'
+import { api, type SearchScope } from './api'
 import type { InspectMetadata, InspectResponse } from './api'
 import type {
   Book,
@@ -44,44 +47,89 @@ import type {
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 
+type ViewKey = 'dashboard' | 'library' | 'search' | 'reader' | 'admin' | 'users'
+
+interface TaxonomyData {
+  clinics: Clinic[]
+  departments: Department[]
+  categories: Category[]
+  placements: Placement[]
+}
+
+const EMPTY_TAXONOMY: TaxonomyData = { clinics: [], departments: [], categories: [], placements: [] }
+
+interface NavEntry {
+  key: ViewKey
+  label: string
+  description: string
+  icon: typeof LayoutDashboard
+  requires?: Role[]
+}
+
+const NAV_ITEMS: NavEntry[] = [
+  { key: 'dashboard', label: 'Dashboard', description: 'Übersicht & Kennzahlen', icon: LayoutDashboard },
+  { key: 'library', label: 'Bibliothek', description: 'Bestand durchsuchen & lesen', icon: BookOpen },
+  { key: 'admin', label: 'Verwaltung', description: 'Uploads, OCR, Einsortierung', icon: Settings, requires: ['admin', 'librarian'] },
+  { key: 'users', label: 'Benutzer', description: 'Konten & Rollen', icon: Users, requires: ['admin', 'librarian'] },
+]
+
 function App() {
   const [user, setUser] = useState<User | null>(null)
-  const [activeView, setActiveView] = useState<'library' | 'admin'>('library')
+  const [view, setView] = useState<ViewKey>('dashboard')
   const [books, setBooks] = useState<Book[]>([])
   const [selectedBook, setSelectedBook] = useState<Book | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchHits, setSearchHits] = useState<SearchHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const [scope, setScope] = useState<SearchScope>({})
+  const [taxonomy, setTaxonomy] = useState<TaxonomyData>(EMPTY_TAXONOMY)
   const [dashboard, setDashboard] = useState<DashboardOverview | null>(null)
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null)
   const [error, setError] = useState('')
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
     api
       .me()
       .then((loadedUser) => {
         setUser(loadedUser)
-        return Promise.all([loadBooks(), loadWorkspace()])
+        return Promise.all([loadBooks(), loadWorkspace(), loadTaxonomy(), loadDashboard()])
       })
       .catch(() => undefined)
   }, [])
 
   useEffect(() => {
-    if (!user) return
-    if (activeView !== 'admin') return
-    if (user.role !== 'admin' && user.role !== 'librarian') return
-    void loadDashboard()
-  }, [activeView, user])
+    setMobileNavOpen(false)
+  }, [view, selectedBook?.id])
 
-  async function loadBooks() {
-    setBooks(await api.books())
+  async function loadBooks(currentScope: SearchScope = scope) {
+    setBooks(await api.books('', currentScope))
   }
 
   async function loadDashboard() {
-    setDashboard(await api.dashboardOverview())
+    try {
+      setDashboard(await api.dashboardOverview())
+    } catch {
+      setDashboard(null)
+    }
   }
 
   async function loadWorkspace() {
     setWorkspace(await api.workspace())
+  }
+
+  async function loadTaxonomy() {
+    try {
+      const [clinics, departments, categories, placements] = await Promise.all([
+        api.clinics(),
+        api.departments(),
+        api.categories(),
+        api.placements(),
+      ])
+      setTaxonomy({ clinics, departments, categories, placements })
+    } catch {
+      setTaxonomy(EMPTY_TAXONOMY)
+    }
   }
 
   async function saveToWorkspace(book: Book) {
@@ -89,15 +137,43 @@ function App() {
     await loadWorkspace()
   }
 
-  async function runSearch() {
-    if (!searchQuery.trim()) {
+  async function runSearch(query: string, nextScope: SearchScope = scope, gotoResults = true) {
+    setSearchQuery(query)
+    if (!query.trim()) {
       setSearchHits([])
-      await loadBooks()
+      await loadBooks(nextScope)
+      if (gotoResults) setView('library')
       return
     }
-    const [hits, matchingBooks] = await Promise.all([api.search(searchQuery), api.books(searchQuery)])
-    setSearchHits(hits)
-    setBooks(matchingBooks)
+    setSearching(true)
+    try {
+      const [hits, matchingBooks] = await Promise.all([
+        api.search(query, nextScope),
+        api.books(query, nextScope),
+      ])
+      setSearchHits(hits)
+      setBooks(matchingBooks)
+      if (gotoResults) {
+        setSelectedBook(null)
+        setView('search')
+      }
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  async function changeScope(nextScope: SearchScope) {
+    setScope(nextScope)
+    if (searchQuery.trim()) {
+      await runSearch(searchQuery, nextScope, false)
+    } else {
+      await loadBooks(nextScope)
+    }
+  }
+
+  function openBook(book: Book) {
+    setSelectedBook(book)
+    setView('reader')
   }
 
   if (!user) {
@@ -105,260 +181,1047 @@ function App() {
   }
 
   const canAdmin = user.role === 'admin' || user.role === 'librarian'
+  const availableNav = NAV_ITEMS.filter((entry) => !entry.requires || entry.requires.includes(user.role))
+  const currentNav = availableNav.find((entry) => entry.key === view) ?? availableNav[0]
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside className="sidebar hidden lg:flex lg:flex-col">
-          <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
-              <Library className="h-4 w-4" />
-            </div>
-            <div className="leading-tight">
-              <p className="text-sm font-semibold text-slate-900">MedLib</p>
-              <p className="text-[11px] text-slate-500">Klinikbibliothek</p>
-            </div>
-          </div>
-          <nav className="flex flex-1 flex-col gap-1 p-3">
-            <button
-              type="button"
-              className={`nav-item ${activeView === 'library' ? 'nav-item-active' : ''}`}
-              onClick={() => {
-                setActiveView('library')
-                setSelectedBook(null)
-              }}
-            >
-              <BookOpen className="h-4 w-4" /> Bibliothek
-            </button>
-            {canAdmin && (
-              <button
-                type="button"
-                className={`nav-item ${activeView === 'admin' ? 'nav-item-active' : ''}`}
-                onClick={() => {
-                  setActiveView('admin')
-                  setSelectedBook(null)
-                }}
-              >
-                <Settings className="h-4 w-4" /> Verwaltung
-              </button>
-            )}
-            <div className="my-2 border-t border-slate-100" />
-            <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Konto
-            </p>
-            <div className="px-3 py-2 text-xs leading-tight">
-              <p className="font-medium text-slate-900">{user.full_name}</p>
-              <p className="text-slate-500">{user.email}</p>
-              <span className="badge badge-indigo mt-2">{user.role}</span>
-            </div>
-            <button
-              type="button"
-              className="nav-item mt-auto"
-              onClick={() => {
-                api.logout()
-                setUser(null)
-              }}
-            >
-              <LogOut className="h-4 w-4" /> Abmelden
-            </button>
-          </nav>
-        </aside>
+    <div className="app-shell">
+      {/* Mobile overlay */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
 
-        <div className="flex min-h-screen flex-col">
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-            <div className="flex items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
-              <div className="flex items-center gap-2 lg:hidden">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
-                  <Library className="h-4 w-4" />
-                </div>
-                <span className="text-sm font-semibold text-slate-900">MedLib</span>
-              </div>
-              <div className="hidden lg:block">
-                <h1 className="text-sm font-semibold text-slate-900">
-                  {activeView === 'library' ? 'Bibliothek' : 'Verwaltung'}
-                </h1>
-                <p className="text-xs text-slate-500">
-                  {activeView === 'library'
-                    ? 'Bestand durchsuchen, lesen und sammeln'
-                    : 'Uploads, Struktur und Benutzer verwalten'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {canAdmin && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-secondary lg:hidden"
-                    onClick={() => {
-                      setActiveView(activeView === 'library' ? 'admin' : 'library')
-                      setSelectedBook(null)
-                    }}
-                  >
-                    {activeView === 'library' ? 'Verwaltung' : 'Bibliothek'}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost lg:hidden"
-                  onClick={() => {
-                    api.logout()
-                    setUser(null)
-                  }}
-                >
-                  <LogOut className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </header>
+      <Sidebar
+        user={user}
+        view={view}
+        items={availableNav}
+        mobileOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        onNavigate={(key) => {
+          setView(key)
+          setSelectedBook(null)
+        }}
+        onLogout={() => {
+          api.logout()
+          setUser(null)
+        }}
+      />
 
-          <main className="flex-1 px-4 py-5 lg:px-6 lg:py-6">
-            {activeView === 'library' ? (
-              <LibraryHome
+      <div className="app-main">
+        <TopBar
+          title={currentNav?.label ?? ''}
+          subtitle={currentNav?.description ?? ''}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onSearch={(q) => void runSearch(q)}
+          scope={scope}
+          taxonomy={taxonomy}
+          onScopeChange={(next) => void changeScope(next)}
+          searching={searching}
+          onOpenNav={() => setMobileNavOpen(true)}
+        />
+
+        <main className="app-content">
+          <div className="mx-auto w-full max-w-screen-2xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
+            {view === 'dashboard' && (
+              <DashboardView
                 user={user}
                 books={books}
                 workspace={workspace}
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                searchHits={searchHits}
-                selectedBook={selectedBook}
-                onRunSearch={runSearch}
-                onSelectBook={setSelectedBook}
-                onSaveBook={saveToWorkspace}
+                dashboard={dashboard}
+                onRefresh={loadDashboard}
+                onOpenBook={openBook}
+                onJumpToLibrary={() => setView('library')}
+                onUserChanged={setUser}
               />
-            ) : (
-              <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)]">
-                <div className="space-y-5">
-                  <DashboardPanel dashboard={dashboard} onRefresh={loadDashboard} />
-                  <Stats books={books} />
-                  <AccountPanel currentUser={user} onUserChanged={setUser} />
-                </div>
-                <div className="space-y-5">
-                  <UploadPanel
-                    onUploaded={async () => {
-                      await Promise.all([loadBooks(), loadDashboard()])
-                    }}
-                  />
-                  <TaxonomyPanel
-                    books={books}
-                    onChanged={async () => {
-                      await Promise.all([loadBooks(), loadDashboard()])
-                    }}
-                  />
-                  <UserManagementPanel currentUser={user} />
-                </div>
-              </div>
             )}
-          </main>
-        </div>
+
+            {view === 'library' && (
+              <LibraryView
+                books={books}
+                taxonomy={taxonomy}
+                scope={scope}
+                onScopeChange={(next) => void changeScope(next)}
+                onOpenBook={openBook}
+                onSaveBook={saveToWorkspace}
+                workspace={workspace}
+              />
+            )}
+
+            {view === 'search' && (
+              <SearchView
+                query={searchQuery}
+                searching={searching}
+                hits={searchHits}
+                books={books}
+                scope={scope}
+                taxonomy={taxonomy}
+                onScopeChange={(next) => void changeScope(next)}
+                onOpenBook={openBook}
+                onClear={() => {
+                  setSearchQuery('')
+                  setSearchHits([])
+                  void loadBooks()
+                  setView('library')
+                }}
+              />
+            )}
+
+            {view === 'reader' && selectedBook && (
+              <Reader
+                book={selectedBook}
+                query={searchQuery}
+                onBack={() => {
+                  setSelectedBook(null)
+                  setView(searchHits.length > 0 ? 'search' : 'library')
+                }}
+                onSave={saveToWorkspace}
+              />
+            )}
+
+            {view === 'admin' && canAdmin && (
+              <AdminView
+                books={books}
+                onChanged={async () => {
+                  await Promise.all([loadBooks(), loadDashboard(), loadTaxonomy()])
+                }}
+              />
+            )}
+
+            {view === 'users' && canAdmin && <UserManagementPanel currentUser={user} />}
+          </div>
+        </main>
       </div>
     </div>
   )
 }
 
-function LibraryHome({
+/* ============================== Layout shell ============================== */
+
+function Sidebar({
+  user,
+  view,
+  items,
+  mobileOpen,
+  onClose,
+  onNavigate,
+  onLogout,
+}: {
+  user: User
+  view: ViewKey
+  items: NavEntry[]
+  mobileOpen: boolean
+  onClose: () => void
+  onNavigate: (key: ViewKey) => void
+  onLogout: () => void
+}) {
+  return (
+    <aside
+      className={`app-sidebar ${mobileOpen ? 'app-sidebar-open' : ''}`}
+      aria-label="Hauptnavigation"
+    >
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
+            <Library className="h-4 w-4" />
+          </div>
+          <div className="leading-tight">
+            <p className="text-sm font-semibold text-slate-900">MedLib</p>
+            <p className="text-[11px] text-slate-500">Klinikbibliothek</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
+          onClick={onClose}
+          aria-label="Menü schließen"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 py-3">
+        {items.map((entry) => {
+          const Icon = entry.icon
+          const active = view === entry.key
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              className={`nav-item ${active ? 'nav-item-active' : ''}`}
+              onClick={() => onNavigate(entry.key)}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="flex-1 text-left">{entry.label}</span>
+            </button>
+          )
+        })}
+      </nav>
+
+      <div className="border-t border-slate-100 p-3">
+        <div className="mb-2 rounded-md bg-slate-50 px-3 py-2">
+          <p className="truncate text-sm font-medium text-slate-900">{user.full_name}</p>
+          <p className="truncate text-[11px] text-slate-500">{user.email}</p>
+          <span className="badge badge-indigo mt-1.5">{user.role}</span>
+        </div>
+        <button type="button" className="nav-item" onClick={onLogout}>
+          <LogOut className="h-4 w-4" /> Abmelden
+        </button>
+      </div>
+    </aside>
+  )
+}
+
+function TopBar({
+  title,
+  subtitle,
+  searchQuery,
+  setSearchQuery,
+  onSearch,
+  scope,
+  taxonomy,
+  onScopeChange,
+  searching,
+  onOpenNav,
+}: {
+  title: string
+  subtitle: string
+  searchQuery: string
+  setSearchQuery: (v: string) => void
+  onSearch: (v: string) => void
+  scope: SearchScope
+  taxonomy: TaxonomyData
+  onScopeChange: (next: SearchScope) => void
+  searching: boolean
+  onOpenNav: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const scopeLabel = useMemo(() => describeScope(scope, taxonomy), [scope, taxonomy])
+
+  return (
+    <header className="app-topbar">
+      <div className="mx-auto flex w-full max-w-screen-2xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5 lg:px-8">
+        <button
+          type="button"
+          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
+          onClick={onOpenNav}
+          aria-label="Menü öffnen"
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+
+        <div className="hidden min-w-0 lg:block">
+          <h1 className="truncate text-sm font-semibold text-slate-900">{title}</h1>
+          <p className="truncate text-[11px] text-slate-500">{subtitle}</p>
+        </div>
+
+        <form
+          className="search-bar"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSearch(searchQuery)
+          }}
+        >
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            className="search-bar-input"
+            placeholder='Volltextsuche – z. B. "meningi*" -kinder OR neugeborenes'
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="absolute right-24 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-700"
+              onClick={() => {
+                setSearchQuery('')
+                onSearch('')
+              }}
+              aria-label="Suche zurücksetzen"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button type="submit" className="btn btn-sm btn-primary absolute right-1.5 top-1/2 -translate-y-1/2">
+            {searching ? '…' : 'Suchen'}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          className="hidden items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 hover:border-slate-300 sm:inline-flex"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <FolderTree className="h-3.5 w-3.5 text-indigo-600" />
+          <span className="font-medium">{scopeLabel}</span>
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-slate-100 bg-slate-50">
+          <div className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-end gap-2 px-3 py-3 sm:px-5 lg:px-8">
+            <ScopePicker scope={scope} taxonomy={taxonomy} onChange={onScopeChange} />
+            <p className="ml-auto text-[11px] text-slate-500">
+              Wildcard: <code className="font-mono">begriff*</code> · Ausschluss: <code className="font-mono">-wort</code> · Oder: <code className="font-mono">begriff OR andere</code>
+            </p>
+          </div>
+        </div>
+      )}
+    </header>
+  )
+}
+
+function ScopePicker({
+  scope,
+  taxonomy,
+  onChange,
+}: {
+  scope: SearchScope
+  taxonomy: TaxonomyData
+  onChange: (next: SearchScope) => void
+}) {
+  const filteredDepartments = taxonomy.departments.filter(
+    (department) => !scope.clinicId || department.clinic_id === scope.clinicId,
+  )
+  const filteredCategories = taxonomy.categories.filter(
+    (category) => !scope.departmentId || category.department_id === scope.departmentId,
+  )
+  return (
+    <div className="grid w-full gap-2 sm:grid-cols-3">
+      <label className="block">
+        <span className="eyebrow mb-1 block">Klinik</span>
+        <select
+          className="form-control"
+          value={scope.clinicId ?? ''}
+          onChange={(event) =>
+            onChange({ clinicId: event.target.value || undefined, departmentId: undefined, categoryId: undefined })
+          }
+        >
+          <option value="">Alle Kliniken</option>
+          {taxonomy.clinics.map((clinic) => (
+            <option key={clinic.id} value={clinic.id}>
+              {clinic.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block">
+        <span className="eyebrow mb-1 block">Fachbereich</span>
+        <select
+          className="form-control"
+          value={scope.departmentId ?? ''}
+          onChange={(event) =>
+            onChange({ ...scope, departmentId: event.target.value || undefined, categoryId: undefined })
+          }
+          disabled={!filteredDepartments.length}
+        >
+          <option value="">Alle Fachbereiche</option>
+          {filteredDepartments.map((department) => (
+            <option key={department.id} value={department.id}>
+              {department.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block">
+        <span className="eyebrow mb-1 block">Kategorie</span>
+        <select
+          className="form-control"
+          value={scope.categoryId ?? ''}
+          onChange={(event) => onChange({ ...scope, categoryId: event.target.value || undefined })}
+          disabled={!filteredCategories.length}
+        >
+          <option value="">Alle Kategorien</option>
+          {filteredCategories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  )
+}
+
+function describeScope(scope: SearchScope, taxonomy: TaxonomyData) {
+  const parts: string[] = []
+  if (scope.clinicId) {
+    const clinic = taxonomy.clinics.find((c) => c.id === scope.clinicId)
+    if (clinic) parts.push(clinic.name)
+  }
+  if (scope.departmentId) {
+    const department = taxonomy.departments.find((d) => d.id === scope.departmentId)
+    if (department) parts.push(department.name)
+  }
+  if (scope.categoryId) {
+    const category = taxonomy.categories.find((c) => c.id === scope.categoryId)
+    if (category) parts.push(category.name)
+  }
+  return parts.length ? parts.join(' / ') : 'Gesamter Bestand'
+}
+
+/* ============================== Views ============================== */
+
+function DashboardView({
   user,
   books,
   workspace,
-  searchQuery,
-  setSearchQuery,
-  searchHits,
-  selectedBook,
-  onRunSearch,
-  onSelectBook,
-  onSaveBook,
+  dashboard,
+  onRefresh,
+  onOpenBook,
+  onJumpToLibrary,
+  onUserChanged,
 }: {
   user: User
   books: Book[]
   workspace: UserWorkspace | null
-  searchQuery: string
-  setSearchQuery: (value: string) => void
-  searchHits: SearchHit[]
-  selectedBook: Book | null
-  onRunSearch: () => Promise<void>
-  onSelectBook: (book: Book | null) => void
-  onSaveBook: (book: Book) => Promise<void>
+  dashboard: DashboardOverview | null
+  onRefresh: () => Promise<void>
+  onOpenBook: (book: Book) => void
+  onJumpToLibrary: () => void
+  onUserChanged: (user: User) => void
 }) {
-  const featuredBooks = useMemo(
+  const recent = useMemo(
     () =>
       [...books]
-        .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-        .slice(0, 6),
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 8),
     [books],
   )
-  const topSpecialties = useMemo(() => {
-    const counts = new Map<string, number>()
-    books.forEach((book) => {
-      const specialty = book.specialty?.trim() || 'Allgemeinmedizin'
-      counts.set(specialty, (counts.get(specialty) ?? 0) + 1)
-    })
-    return [...counts.entries()].sort((left, right) => right[1] - left[1]).slice(0, 6)
-  }, [books])
+  const canAdmin = user.role === 'admin' || user.role === 'librarian'
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-          Willkommen, {user.full_name.split(' ')[0]}
+          Hallo {user.full_name.split(' ')[0]} 👋
         </h2>
         <p className="mt-0.5 text-sm text-slate-500">
-          Durchsuche die Fachbibliothek und lege Titel in deiner persönlichen Merkliste ab.
+          Schnellzugriff auf Bestand, persönliche Sammlung und – sofern berechtigt – Operations.
         </p>
-      </div>
-
-      <div className="card">
-        <div className="card-body flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              className="form-control h-10 pl-9"
-              placeholder="Titel, Autor:in, Fachgebiet, ISBN, Volltext …"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={(event) => event.key === 'Enter' && void onRunSearch()}
-            />
-          </div>
-          <button className="btn btn-primary sm:w-32" onClick={() => void onRunSearch()}>
-            Suchen
-          </button>
-        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="Bestand" value={books.length} hint="Bücher & Journale" />
         <StatTile label="Meine Sammlung" value={workspace?.saved_media.length ?? 0} hint="gemerkte Titel" />
-        <StatTile
-          label="Lesezeichen"
-          value={workspace?.bookmarks.length ?? 0}
-          hint="Bookmarks gesamt"
-        />
+        <StatTile label="Lesezeichen" value={workspace?.bookmarks.length ?? 0} hint="Bookmarks gesamt" />
         <StatTile label="Notizen" value={workspace?.notes.length ?? 0} hint="persönliche Notizen" />
       </div>
 
-      {topSpecialties.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {topSpecialties.map(([specialty, count]) => (
-            <span key={specialty} className="badge badge-slate">
-              {specialty} · {count}
-            </span>
-          ))}
+      <section className="card">
+        <div className="card-header flex items-center justify-between">
+          <div>
+            <h3 className="card-title">Neu im Regal</h3>
+            <p className="card-description">Zuletzt hinzugefügte Titel</p>
+          </div>
+          <button type="button" className="btn btn-sm btn-secondary" onClick={onJumpToLibrary}>
+            Zur Bibliothek
+          </button>
         </div>
-      )}
-
-      {!selectedBook && <FeaturedShelf books={featuredBooks} onSelectBook={(book) => onSelectBook(book)} />}
-
-      <div className="grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="space-y-5">
-          <WorkspacePanel workspace={workspace} onSelectBook={(book) => onSelectBook(book)} />
-        </aside>
-        <section>
-          {selectedBook ? (
-            <Reader book={selectedBook} query={searchQuery} onBack={() => onSelectBook(null)} onSave={onSaveBook} />
+        <div className="card-body pt-3">
+          {recent.length === 0 ? (
+            <p className="muted">Noch keine Titel im Bestand.</p>
           ) : (
-            <BookShelf books={books} hits={searchHits} query={searchQuery} onSelect={onSelectBook} onSave={onSaveBook} />
+            <BookGrid books={recent} onOpen={onOpenBook} />
           )}
-        </section>
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <WorkspaceSection workspace={workspace} onOpenBook={onOpenBook} />
+        <AccountPanel currentUser={user} onUserChanged={onUserChanged} />
       </div>
+
+      {canAdmin && dashboard && (
+        <DashboardPanel dashboard={dashboard} onRefresh={onRefresh} />
+      )}
     </div>
   )
+}
+
+function WorkspaceSection({
+  workspace,
+  onOpenBook,
+}: {
+  workspace: UserWorkspace | null
+  onOpenBook: (book: Book) => void
+}) {
+  return (
+    <section className="card">
+      <div className="card-header">
+        <h3 className="card-title flex items-center gap-2">
+          <Star className="h-4 w-4 text-indigo-600" /> Meine Sammlung
+        </h3>
+        <p className="card-description">Merkliste, Lesezeichen und Notizen</p>
+      </div>
+      <div className="card-body grid gap-4 pt-3 md:grid-cols-3">
+        <div>
+          <p className="eyebrow mb-2">Merkliste</p>
+          {workspace?.saved_media.length ? (
+            <div className="space-y-1.5">
+              {workspace.saved_media.slice(0, 6).map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs hover:border-slate-200 hover:bg-slate-50"
+                  onClick={() => onOpenBook(entry.book)}
+                >
+                  <BookCover book={entry.book} size="xs" />
+                  <span className="min-w-0">
+                    <span className="line-clamp-2 font-medium text-slate-900">{entry.book.title}</span>
+                    <span className="block text-[11px] text-slate-500">
+                      {entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Noch keine gemerkten Titel.</p>
+          )}
+        </div>
+        <div>
+          <p className="eyebrow mb-2">Bookmarks</p>
+          {workspace?.bookmarks.length ? (
+            <div className="space-y-1.5">
+              {workspace.bookmarks.slice(0, 6).map((bookmark) => (
+                <div key={bookmark.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
+                  <p className="font-medium text-slate-900">{bookmark.book_title}</p>
+                  <p className="text-slate-500">
+                    Seite {bookmark.page_number} · {bookmark.label || 'Lesezeichen'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Noch keine Bookmarks.</p>
+          )}
+        </div>
+        <div>
+          <p className="eyebrow mb-2">Notizen</p>
+          {workspace?.notes.length ? (
+            <div className="space-y-1.5">
+              {workspace.notes.slice(0, 6).map((note) => (
+                <div key={note.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
+                  <p className="font-medium text-slate-900">{note.book_title}</p>
+                  <p className="line-clamp-2 text-slate-500">{note.body}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Noch keine Notizen.</p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function LibraryView({
+  books,
+  taxonomy,
+  scope,
+  onScopeChange,
+  onOpenBook,
+  onSaveBook,
+  workspace,
+}: {
+  books: Book[]
+  taxonomy: TaxonomyData
+  scope: SearchScope
+  onScopeChange: (next: SearchScope) => void
+  onOpenBook: (book: Book) => void
+  onSaveBook: (book: Book) => Promise<void>
+  workspace: UserWorkspace | null
+}) {
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'book' | 'journal'>('all')
+  const [sortBy, setSortBy] = useState<'recent' | 'title' | 'year' | 'specialty'>('recent')
+
+  const filtered = useMemo(() => {
+    return [...books]
+      .filter((book) => mediaFilter === 'all' || book.media_type === mediaFilter)
+      .sort((a, b) => {
+        if (sortBy === 'title') return a.title.localeCompare(b.title)
+        if (sortBy === 'year') return (b.year || 0) - (a.year || 0)
+        if (sortBy === 'specialty') return (a.specialty || '').localeCompare(b.specialty || '')
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      })
+  }, [books, mediaFilter, sortBy])
+
+  const shelves = useMemo(() => groupBooksBySpecialty(filtered), [filtered])
+  const savedIds = useMemo(
+    () => new Set(workspace?.saved_media.map((entry) => entry.book.id) ?? []),
+    [workspace],
+  )
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="space-y-4">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title flex items-center gap-2">
+              <FolderTree className="h-4 w-4 text-indigo-600" /> Bereiche
+            </h3>
+            <p className="card-description">Bestand nach Klinik / Fach filtern</p>
+          </div>
+          <div className="card-body space-y-1 pt-3">
+            <ScopeTree taxonomy={taxonomy} scope={scope} onChange={onScopeChange} />
+          </div>
+        </div>
+      </aside>
+
+      <section className="space-y-4">
+        <div className="card">
+          <div className="card-body flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-md bg-slate-100 p-0.5">
+                {[
+                  ['all', 'Alle'],
+                  ['book', 'Bücher'],
+                  ['journal', 'Zeitschriften'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`tab ${mediaFilter === value ? 'tab-active' : ''}`}
+                    onClick={() => setMediaFilter(value as 'all' | 'book' | 'journal')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <select
+                className="form-control h-8 w-40 text-xs"
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as 'recent' | 'title' | 'year' | 'specialty')}
+              >
+                <option value="recent">Sortieren: Neueste</option>
+                <option value="title">Sortieren: Titel</option>
+                <option value="year">Sortieren: Jahr</option>
+                <option value="specialty">Sortieren: Fachgebiet</option>
+              </select>
+            </div>
+            <div className="text-xs text-slate-500">
+              {filtered.length} Titel · {describeScope(scope, taxonomy)}
+            </div>
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <EmptyShelf />
+        ) : (
+          shelves.map((shelf) => (
+            <Shelf
+              key={shelf.label}
+              label={shelf.label}
+              books={shelf.books}
+              onOpen={onOpenBook}
+              onSave={onSaveBook}
+              savedIds={savedIds}
+            />
+          ))
+        )}
+      </section>
+    </div>
+  )
+}
+
+function ScopeTree({
+  taxonomy,
+  scope,
+  onChange,
+}: {
+  taxonomy: TaxonomyData
+  scope: SearchScope
+  onChange: (next: SearchScope) => void
+}) {
+  const allLabel = 'Gesamter Bestand'
+  if (taxonomy.clinics.length === 0) {
+    return <p className="muted">Noch keine Bereiche angelegt. Lege Kliniken & Fachbereiche im Adminbereich an.</p>
+  }
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        className={`nav-item ${!scope.clinicId ? 'nav-item-active' : ''}`}
+        onClick={() => onChange({})}
+      >
+        <Library className="h-3.5 w-3.5" /> {allLabel}
+      </button>
+      {taxonomy.clinics.map((clinic) => {
+        const clinicActive = scope.clinicId === clinic.id
+        const departments = taxonomy.departments.filter((d) => d.clinic_id === clinic.id)
+        return (
+          <div key={clinic.id} className="rounded-md">
+            <button
+              type="button"
+              className={`nav-item ${clinicActive && !scope.departmentId ? 'nav-item-active' : ''}`}
+              onClick={() =>
+                onChange({ clinicId: clinic.id, departmentId: undefined, categoryId: undefined })
+              }
+            >
+              <Building2 className="h-3.5 w-3.5" /> {clinic.name}
+            </button>
+            {clinicActive && departments.length > 0 && (
+              <div className="ml-3 mt-0.5 space-y-0.5 border-l border-slate-200 pl-2">
+                {departments.map((department) => {
+                  const deptActive = scope.departmentId === department.id
+                  const categories = taxonomy.categories.filter((c) => c.department_id === department.id)
+                  return (
+                    <div key={department.id}>
+                      <button
+                        type="button"
+                        className={`nav-item ${deptActive && !scope.categoryId ? 'nav-item-active' : ''}`}
+                        onClick={() =>
+                          onChange({
+                            clinicId: clinic.id,
+                            departmentId: department.id,
+                            categoryId: undefined,
+                          })
+                        }
+                      >
+                        <FolderTree className="h-3.5 w-3.5" /> {department.name}
+                      </button>
+                      {deptActive && categories.length > 0 && (
+                        <div className="ml-3 space-y-0.5 border-l border-slate-200 pl-2">
+                          {categories.map((category) => (
+                            <button
+                              key={category.id}
+                              type="button"
+                              className={`nav-item ${scope.categoryId === category.id ? 'nav-item-active' : ''}`}
+                              onClick={() =>
+                                onChange({
+                                  clinicId: clinic.id,
+                                  departmentId: department.id,
+                                  categoryId: category.id,
+                                })
+                              }
+                            >
+                              <span className="ml-1 text-[10px]">▸</span> {category.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SearchView({
+  query,
+  searching,
+  hits,
+  books,
+  scope,
+  taxonomy,
+  onScopeChange,
+  onOpenBook,
+  onClear,
+}: {
+  query: string
+  searching: boolean
+  hits: SearchHit[]
+  books: Book[]
+  scope: SearchScope
+  taxonomy: TaxonomyData
+  onScopeChange: (next: SearchScope) => void
+  onOpenBook: (book: Book) => void
+  onClear: () => void
+}) {
+  const grouped = useMemo(() => groupHitsByBook(hits), [hits])
+  const additional = useMemo(() => {
+    const seen = new Set(grouped.map((entry) => entry.book.id))
+    return books.filter((book) => !seen.has(book.id))
+  }, [books, grouped])
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="space-y-4">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">Filter</h3>
+            <p className="card-description">Suche auf einen Bereich eingrenzen</p>
+          </div>
+          <div className="card-body space-y-1 pt-3">
+            <ScopeTree taxonomy={taxonomy} scope={scope} onChange={onScopeChange} />
+          </div>
+        </div>
+      </aside>
+
+      <section className="space-y-4">
+        <div className="card">
+          <div className="card-body flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="eyebrow">Suchergebnisse</p>
+              <h2 className="truncate text-lg font-semibold text-slate-900">
+                {query || 'Bitte Begriff eingeben'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {hits.length} Treffer im Volltext · {books.length} passende Titel · {describeScope(scope, taxonomy)}
+              </p>
+            </div>
+            <button type="button" className="btn btn-sm btn-secondary" onClick={onClear}>
+              Suche zurücksetzen
+            </button>
+          </div>
+        </div>
+
+        {searching && <p className="muted">Suche läuft …</p>}
+
+        {!searching && grouped.length === 0 && books.length === 0 && (
+          <div className="card">
+            <div className="card-body py-10 text-center">
+              <p className="text-sm font-medium text-slate-900">Keine Treffer</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Tipp: Mit <code className="font-mono">*</code> verlängern (z. B. <code className="font-mono">meningi*</code>),
+                {' '}mit <code className="font-mono">-wort</code> ausschließen oder{' '}
+                <code className="font-mono">OR</code> für Alternativen verwenden.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {grouped.length > 0 && (
+          <div className="space-y-2">
+            {grouped.map((entry) => (
+              <SearchResultCard
+                key={entry.book.id}
+                entry={entry}
+                query={query}
+                onOpen={() => onOpenBook(entry.book)}
+              />
+            ))}
+          </div>
+        )}
+
+        {additional.length > 0 && (
+          <section className="card">
+            <div className="card-header">
+              <h3 className="card-title">Treffer im Titel / Metadaten</h3>
+              <p className="card-description">
+                Bücher, die zur Anfrage passen, aber (noch) keinen OCR-Volltext-Treffer haben
+              </p>
+            </div>
+            <div className="card-body pt-3">
+              <BookGrid books={additional.slice(0, 24)} onOpen={onOpenBook} />
+            </div>
+          </section>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function SearchResultCard({
+  entry,
+  query,
+  onOpen,
+}: {
+  entry: { book: Book; hits: SearchHit[] }
+  query: string
+  onOpen: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? entry.hits : entry.hits.slice(0, 3)
+  return (
+    <article className="search-card">
+      <button type="button" className="search-card-cover" onClick={onOpen} aria-label={`${entry.book.title} öffnen`}>
+        <BookCover book={entry.book} size="sm" />
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <button type="button" className="text-left" onClick={onOpen}>
+            <h3 className="line-clamp-1 text-sm font-semibold text-slate-900 hover:text-indigo-700">
+              {entry.book.title}
+            </h3>
+          </button>
+          <span className="text-[11px] text-slate-500">
+            {[entry.book.authors, entry.book.year].filter(Boolean).join(' · ') || 'MedLib'}
+          </span>
+        </div>
+        <p className="mt-0.5 text-[11px] uppercase tracking-wide text-slate-400">
+          {entry.book.specialty || 'Allgemein'} · {entry.hits.length} Treffer
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {visible.map((hit, index) => (
+            <button
+              key={`${hit.page_number ?? 'na'}-${index}`}
+              type="button"
+              className="snippet block w-full rounded-md border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-left text-[12px] leading-5 text-slate-700 hover:border-amber-200"
+              onClick={onOpen}
+            >
+              <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                Seite {hit.page_number ?? '–'}
+              </span>
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: hit.snippet?.includes('<mark>')
+                    ? hit.snippet
+                    : highlightTerm(hit.snippet ?? '', query),
+                }}
+              />
+            </button>
+          ))}
+        </div>
+        {entry.hits.length > 3 && (
+          <button
+            type="button"
+            className="mt-1.5 text-[11px] font-medium text-indigo-700 hover:text-indigo-800"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? 'Weniger anzeigen' : `${entry.hits.length - 3} weitere Treffer anzeigen`}
+          </button>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function AdminView({ books, onChanged }: { books: Book[]; onChanged: () => Promise<void> }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-2">
+      <UploadPanel onUploaded={onChanged} />
+      <TaxonomyPanel books={books} onChanged={onChanged} />
+    </div>
+  )
+}
+
+/* ============================== Book grid / shelves ============================== */
+
+function BookGrid({ books, onOpen }: { books: Book[]; onOpen: (book: Book) => void }) {
+  return (
+    <div className="book-grid">
+      {books.map((book) => (
+        <BookTile key={book.id} book={book} onOpen={() => onOpen(book)} />
+      ))}
+    </div>
+  )
+}
+
+function Shelf({
+  label,
+  books,
+  onOpen,
+  onSave,
+  savedIds,
+}: {
+  label: string
+  books: Book[]
+  onOpen: (book: Book) => void
+  onSave: (book: Book) => Promise<void>
+  savedIds: Set<string>
+}) {
+  return (
+    <section className="card">
+      <div className="card-header flex items-center justify-between">
+        <div>
+          <h3 className="card-title">{label}</h3>
+          <p className="card-description">{books.length} Titel</p>
+        </div>
+      </div>
+      <div className="card-body pt-3">
+        <div className="book-grid">
+          {books.map((book) => (
+            <BookTile
+              key={book.id}
+              book={book}
+              onOpen={() => onOpen(book)}
+              onSave={savedIds.has(book.id) ? undefined : () => void onSave(book)}
+              saved={savedIds.has(book.id)}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function BookTile({
+  book,
+  onOpen,
+  onSave,
+  saved,
+}: {
+  book: Book
+  onOpen: () => void
+  onSave?: () => void
+  saved?: boolean
+}) {
+  return (
+    <article className="book-tile">
+      <button type="button" className="book-tile-cover" onClick={onOpen} aria-label={`${book.title} öffnen`}>
+        <BookCover book={book} size="md" />
+      </button>
+      <div className="book-tile-meta">
+        <button type="button" className="text-left" onClick={onOpen}>
+          <h4 className="line-clamp-2 text-[13px] font-semibold leading-tight text-slate-900 hover:text-indigo-700">
+            {book.title}
+          </h4>
+        </button>
+        <p className="line-clamp-1 text-[11px] text-slate-500">
+          {book.authors || book.publisher || 'MedLib'}
+          {book.year ? ` · ${book.year}` : ''}
+        </p>
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="badge badge-slate">{book.media_type === 'journal' ? 'Journal' : 'Buch'}</span>
+          {book.specialty && <span className="badge badge-indigo">{book.specialty}</span>}
+        </div>
+        {onSave && (
+          <button
+            type="button"
+            className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 hover:text-indigo-800"
+            onClick={(event) => {
+              event.stopPropagation()
+              onSave()
+            }}
+          >
+            <Star className="h-3 w-3" /> Merken
+          </button>
+        )}
+        {saved && (
+          <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-emerald-700">
+            <Star className="h-3 w-3" /> gemerkt
+          </span>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function groupBooksBySpecialty(books: Book[]): { label: string; books: Book[] }[] {
+  const map = new Map<string, Book[]>()
+  for (const book of books) {
+    const label = (book.specialty || 'Allgemein').trim() || 'Allgemein'
+    if (!map.has(label)) map.set(label, [])
+    map.get(label)!.push(book)
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, list]) => ({ label, books: list }))
+}
+
+function groupHitsByBook(hits: SearchHit[]): { book: Book; hits: SearchHit[] }[] {
+  const map = new Map<string, { book: Book; hits: SearchHit[] }>()
+  for (const hit of hits) {
+    const existing = map.get(hit.book.id)
+    if (existing) {
+      existing.hits.push(hit)
+    } else {
+      map.set(hit.book.id, { book: hit.book, hits: [hit] })
+    }
+  }
+  return [...map.values()]
 }
 
 function StatTile({ label, value, hint }: { label: string; value: number; hint?: string }) {
@@ -373,130 +1236,20 @@ function StatTile({ label, value, hint }: { label: string; value: number; hint?:
   )
 }
 
-function FeaturedShelf({ books, onSelectBook }: { books: Book[]; onSelectBook: (book: Book) => void }) {
+function EmptyShelf() {
   return (
-    <section className="card">
-      <div className="card-header flex items-center justify-between">
-        <div>
-          <h3 className="card-title">Neu im Regal</h3>
-          <p className="card-description">Aktuell hinzugefügte Titel</p>
-        </div>
-        {books.length > 0 && <span className="badge badge-slate">{books.length}</span>}
+    <div className="card">
+      <div className="card-body py-12 text-center">
+        <p className="text-sm font-medium text-slate-900">Keine Treffer im aktuellen Bereich</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Passe Filter oder Suche an, oder lade neue Medien im Adminbereich hoch.
+        </p>
       </div>
-      <div className="card-body pt-3">
-        <div className="shelf">
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            {books.length > 0
-              ? books.map((book) => (
-                  <button key={book.id} type="button" className="featured-tile" onClick={() => onSelectBook(book)}>
-                    <BookCover book={book} />
-                    <div className="min-w-0">
-                      <p className="line-clamp-2 text-xs font-medium text-slate-900">{book.title}</p>
-                      <p className="line-clamp-1 text-[11px] text-slate-500">
-                        {book.authors || book.publisher || 'MedLib'}
-                      </p>
-                    </div>
-                  </button>
-                ))
-              : Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="featured-tile">
-                    <EmptyCover />
-                    <div>
-                      <div className="h-3 w-3/4 rounded bg-slate-200" />
-                      <div className="mt-1 h-2 w-1/2 rounded bg-slate-100" />
-                    </div>
-                  </div>
-                ))}
-          </div>
-          {books.length === 0 && (
-            <p className="mt-4 text-center text-xs text-slate-500">
-              Noch keine Titel im Bestand – Uploads erscheinen hier automatisch.
-            </p>
-          )}
-        </div>
-      </div>
-    </section>
+    </div>
   )
 }
 
-function WorkspacePanel({
-  workspace,
-  onSelectBook,
-}: {
-  workspace: UserWorkspace | null
-  onSelectBook: (book: Book) => void
-}) {
-  if (!workspace) {
-    return (
-      <section className="card">
-        <div className="card-body">
-          <p className="muted">Persönlicher Bereich wird geladen …</p>
-        </div>
-      </section>
-    )
-  }
-
-  return (
-    <section className="card">
-      <div className="card-header">
-        <h3 className="card-title flex items-center gap-2">
-          <Star className="h-4 w-4 text-indigo-600" /> Mein Bereich
-        </h3>
-        <p className="card-description">Merkliste, Lesezeichen und Notizen</p>
-      </div>
-      <div className="card-body space-y-4 pt-3">
-        <div>
-          <p className="eyebrow mb-2">Merkliste</p>
-          <div className="space-y-1.5">
-            {workspace.saved_media.slice(0, 5).map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs hover:border-slate-200 hover:bg-slate-50"
-                onClick={() => onSelectBook(entry.book)}
-              >
-                <BookCover book={entry.book} compact />
-                <span className="min-w-0">
-                  <span className="line-clamp-2 font-medium text-slate-900">{entry.book.title}</span>
-                  <span className="block text-[11px] text-slate-500">
-                    {entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}
-                  </span>
-                </span>
-              </button>
-            ))}
-            {!workspace.saved_media.length && <p className="muted">Noch keine gemerkten Titel.</p>}
-          </div>
-        </div>
-        <div className="border-t border-slate-100 pt-4">
-          <p className="eyebrow mb-2">Bookmarks</p>
-          <div className="space-y-1.5">
-            {workspace.bookmarks.slice(0, 4).map((bookmark) => (
-              <div key={bookmark.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
-                <p className="font-medium text-slate-900">{bookmark.book_title}</p>
-                <p className="text-slate-500">
-                  Seite {bookmark.page_number} · {bookmark.label || 'Lesezeichen'}
-                </p>
-              </div>
-            ))}
-            {!workspace.bookmarks.length && <p className="muted">Noch keine Bookmarks.</p>}
-          </div>
-        </div>
-        <div className="border-t border-slate-100 pt-4">
-          <p className="eyebrow mb-2">Notizen</p>
-          <div className="space-y-1.5">
-            {workspace.notes.slice(0, 4).map((note) => (
-              <div key={note.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
-                <p className="font-medium text-slate-900">{note.book_title}</p>
-                <p className="line-clamp-2 text-slate-500">{note.body}</p>
-              </div>
-            ))}
-            {!workspace.notes.length && <p className="muted">Noch keine Notizen.</p>}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
+/* Legacy App shell removed – new shell is at top of file. */
 
 /* ============================== Admin panels ============================== */
 
@@ -792,28 +1545,7 @@ function Login({
   )
 }
 
-/* ============================== Stats / Admin ============================== */
-
-function Stats({ books }: { books: Book[] }) {
-  const pageCount = books.reduce((sum, book) => sum + book.page_count, 0)
-  const specialties = new Set(books.map((book) => book.specialty).filter(Boolean)).size
-  return (
-    <section className="card">
-      <div className="card-body grid grid-cols-3 gap-2 py-3">
-        {[
-          ['Bücher', books.length],
-          ['Seiten', pageCount],
-          ['Fächer', specialties],
-        ].map(([label, value]) => (
-          <div key={label as string} className="rounded-md bg-slate-50 px-3 py-2 text-center">
-            <p className="text-lg font-semibold text-slate-900">{value}</p>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
+/* ============================== Admin sub-panels ============================== */
 
 function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
   const [file, setFile] = useState<File | null>(null)
@@ -1746,8 +2478,17 @@ function coverGradient(book: Book) {
   return COVER_THEMES[signature % COVER_THEMES.length]
 }
 
-function BookCover({ book, compact = false }: { book: Book; compact?: boolean }) {
-  const dimensions = compact ? 'h-12 w-8' : 'h-24 w-16'
+type CoverSize = 'xs' | 'sm' | 'md' | 'lg'
+
+const COVER_DIMENSIONS: Record<CoverSize, string> = {
+  xs: 'h-10 w-7',
+  sm: 'h-16 w-11',
+  md: 'h-32 w-22 max-w-[120px]',
+  lg: 'h-44 w-32 max-w-[140px]',
+}
+
+function BookCover({ book, size = 'md' }: { book: Book; size?: CoverSize }) {
+  const dimensions = COVER_DIMENSIONS[size]
   const [imageFailed, setImageFailed] = useState(false)
 
   if (!imageFailed) {
@@ -1762,14 +2503,16 @@ function BookCover({ book, compact = false }: { book: Book; compact?: boolean })
     )
   }
 
-  const titleSize = compact ? 'text-[8px]' : 'text-[10px]'
+  const titleSize = size === 'xs' ? 'text-[7px]' : size === 'sm' ? 'text-[9px]' : size === 'lg' ? 'text-[12px]' : 'text-[10px]'
+  const showMeta = size === 'md' || size === 'lg'
+  const shortLen = size === 'xs' ? 3 : size === 'sm' ? 5 : size === 'lg' ? 9 : 7
   return (
     <div
       className={`cover ${dimensions} flex shrink-0 flex-col justify-between p-1.5`}
       style={{ background: coverGradient(book) }}
     >
-      <p className={`${titleSize} line-clamp-3 font-semibold leading-tight`}>{shortTitle(book.title, compact ? 4 : 7)}</p>
-      {!compact && (
+      <p className={`${titleSize} line-clamp-3 font-semibold leading-tight text-white`}>{shortTitle(book.title, shortLen)}</p>
+      {showMeta && (
         <p className="line-clamp-1 text-[8px] font-medium uppercase tracking-wide text-white/80">
           {book.specialty || (book.media_type === 'journal' ? 'Journal' : 'Buch')}
         </p>
@@ -1778,182 +2521,7 @@ function BookCover({ book, compact = false }: { book: Book; compact?: boolean })
   )
 }
 
-function EmptyCover() {
-  return <div className="cover-empty h-24 w-16" />
-}
-
-function BookShelf({
-  books,
-  hits,
-  query,
-  onSelect,
-  onSave,
-}: {
-  books: Book[]
-  hits: SearchHit[]
-  query: string
-  onSelect: (book: Book) => void
-  onSave: (book: Book) => Promise<void>
-}) {
-  const [mediaFilter, setMediaFilter] = useState<'all' | 'book' | 'journal'>('all')
-  const [letterFilter, setLetterFilter] = useState('ALLE')
-  const [sortBy, setSortBy] = useState<'title' | 'year' | 'specialty' | 'author'>('title')
-  const hitsByBook = useMemo(() => new Map(hits.map((hit) => [hit.book.id, hit])), [hits])
-
-  const sortedBooks = useMemo(() => {
-    return [...books]
-      .filter((book) => mediaFilter === 'all' || book.media_type === mediaFilter)
-      .filter((book) => letterFilter === 'ALLE' || book.title.trim().charAt(0).toUpperCase() === letterFilter)
-      .sort((a, b) => {
-        if (sortBy === 'title') return a.title.localeCompare(b.title)
-        if (sortBy === 'year') return (b.year || 0) - (a.year || 0)
-        if (sortBy === 'specialty') return (a.specialty || '').localeCompare(b.specialty || '')
-        if (sortBy === 'author') return (a.authors || a.publisher || '').localeCompare(b.authors || b.publisher || '')
-        return 0
-      })
-  }, [books, letterFilter, mediaFilter, sortBy])
-
-  const letters = useMemo(
-    () => ['ALLE', ...new Set(books.map((book) => book.title.trim().charAt(0).toUpperCase()).filter(Boolean)).values()],
-    [books],
-  )
-
-  return (
-    <section className="card">
-      <div className="card-header">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="card-title">Bestand</h3>
-            <p className="card-description">Filtern, sortieren und direkt öffnen</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-md bg-slate-100 p-0.5">
-              {[
-                ['all', 'Alle'],
-                ['journal', 'Zeitschriften'],
-                ['book', 'Bücher'],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  className={`tab ${mediaFilter === value ? 'tab-active' : ''}`}
-                  onClick={() => setMediaFilter(value as 'all' | 'book' | 'journal')}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <select
-              className="form-control h-8 w-44 text-xs"
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as 'title' | 'year' | 'specialty' | 'author')}
-            >
-              <option value="title">Sortieren: Titel</option>
-              <option value="year">Sortieren: Jahr</option>
-              <option value="specialty">Sortieren: Fachgebiet</option>
-              <option value="author">Sortieren: Autor:in</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div className="card-body space-y-3 pt-3">
-        <div className="flex flex-wrap gap-1.5">
-          {letters.map((letter) => (
-            <button
-              key={letter}
-              className={`alphabet-chip ${letterFilter === letter ? 'alphabet-chip-active' : ''}`}
-              onClick={() => setLetterFilter(letter)}
-              type="button"
-            >
-              {letter}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>{sortedBooks.length} Titel</span>
-          {query.trim() && <span className="badge badge-slate">Suche: {query}</span>}
-        </div>
-
-        {sortedBooks.length > 0 ? (
-          <div className="space-y-1.5">
-            {sortedBooks.map((book) => {
-              const hit = hitsByBook.get(book.id)
-              return (
-                <article key={book.id} className="book-row group">
-                  <button
-                    type="button"
-                    className="flex items-center justify-center"
-                    onClick={() => onSelect(book)}
-                    aria-label={`${book.title} öffnen`}
-                  >
-                    <BookCover book={book} compact />
-                  </button>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                      <span>{book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}</span>
-                      <span className="text-slate-300">•</span>
-                      <span>{book.specialty ?? 'Medizin'}</span>
-                      {book.year && (
-                        <>
-                          <span className="text-slate-300">•</span>
-                          <span>{book.year}</span>
-                        </>
-                      )}
-                    </div>
-                    <button className="mt-0.5 text-left" onClick={() => onSelect(book)} type="button">
-                      <h4 className="line-clamp-1 text-sm font-semibold text-slate-900 group-hover:text-indigo-700">
-                        {book.title}
-                      </h4>
-                    </button>
-                    <p className="line-clamp-1 text-xs text-slate-500">
-                      {book.authors ?? book.publisher ?? 'Unbekannt'} · {book.page_count} Seiten
-                    </p>
-                    {hit?.snippet && (
-                      <p
-                        className="snippet mt-1.5 line-clamp-2 rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-[11px] leading-5 text-slate-700"
-                        dangerouslySetInnerHTML={{ __html: highlightTerm(hit.snippet, query) }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button className="btn btn-sm btn-primary" onClick={() => onSelect(book)} type="button">
-                      Lesen
-                    </button>
-                    <button className="btn btn-sm btn-secondary" onClick={() => void onSave(book)} type="button">
-                      Merken
-                    </button>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        ) : (
-          <EmptyShelf />
-        )}
-      </div>
-    </section>
-  )
-}
-
-function EmptyShelf() {
-  return (
-    <div className="shelf">
-      <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-8">
-        {Array.from({ length: 16 }).map((_, index) => (
-          <EmptyCover key={index} />
-        ))}
-      </div>
-      <div className="mt-4 text-center">
-        <p className="text-sm font-medium text-slate-900">Das Regal ist noch leer</p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Sobald Medien hochgeladen wurden, erscheinen sie hier mit Cover und Suche.
-        </p>
-      </div>
-    </div>
-  )
-}
+/* Legacy BookShelf / EmptyShelf removed – replaced by BookGrid/Shelf/BookTile at top of file. */
 
 /* ============================== Reader ============================== */
 

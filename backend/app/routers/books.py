@@ -1,3 +1,4 @@
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -15,10 +16,46 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.metadata import lookup_metadata, ocr_cover_text
-from app.models import Book, BookPage, MediaType, OcrJob, Role, User
+from app.models import Book, BookPage, MediaPlacement, MediaType, OcrJob, Role, User
 from app.ocr import count_pdf_pages, run_ocr_job
 from app.schemas import BookRead, OcrJobRead, PageRead, SearchHit
 from app.security import get_current_user, get_current_user_for_asset, require_roles
+
+
+def _build_tsquery(text: str) -> str | None:
+    """Translate user query into a Postgres ``to_tsquery`` expression.
+
+    Supports trailing ``*`` for prefix matching, leading ``-`` for negation,
+    and ``OR`` between tokens. Anything else is AND-combined.
+    """
+    tokens: list[str] = []
+    operator = "&"
+    for raw in re.split(r"\s+", text.strip()):
+        if not raw:
+            continue
+        if raw.upper() == "OR":
+            operator = "|"
+            continue
+        negated = raw.startswith("-")
+        body = raw[1:] if negated else raw
+        prefix = body.endswith("*")
+        if prefix:
+            body = body[:-1]
+        body = re.sub(r"[&|!()<>:\\'\"]", " ", body).strip()
+        if not body:
+            continue
+        parts = [p for p in body.split() if p]
+        if not parts:
+            continue
+        for idx, part in enumerate(parts):
+            lex = f"{part}:*" if (prefix and idx == len(parts) - 1) else part
+            if negated:
+                lex = f"!{lex}"
+            if tokens:
+                tokens.append(operator)
+            tokens.append(lex)
+            operator = "&"  # reset after consumption
+    return " ".join(tokens) if tokens else None
 
 router = APIRouter()
 
@@ -60,16 +97,37 @@ def _safe_storage_name(prefix: str, original: str | None) -> str:
 def list_books(
     q: str | None = None,
     specialty: str | None = None,
+    clinic_id: UUID | None = None,
+    department_id: UUID | None = None,
+    category_id: UUID | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[Book]:
     statement = select(Book).order_by(Book.created_at.desc())
     if q:
-        like = f"%{q}%"
-        statement = statement.where(or_(Book.title.ilike(like), Book.authors.ilike(like), Book.isbn.ilike(like)))
+        wildcard = q.replace("*", "%")
+        like = f"%{wildcard}%"
+        statement = statement.where(
+            or_(
+                Book.title.ilike(like),
+                Book.authors.ilike(like),
+                Book.publisher.ilike(like),
+                Book.isbn.ilike(like),
+                Book.specialty.ilike(like),
+            )
+        )
     if specialty:
         statement = statement.where(Book.specialty == specialty)
-    return list(db.scalars(statement.limit(200)))
+    if clinic_id or department_id or category_id:
+        statement = statement.join(MediaPlacement, MediaPlacement.book_id == Book.id)
+        if clinic_id:
+            statement = statement.where(MediaPlacement.clinic_id == clinic_id)
+        if department_id:
+            statement = statement.where(MediaPlacement.department_id == department_id)
+        if category_id:
+            statement = statement.where(MediaPlacement.category_id == category_id)
+        statement = statement.distinct()
+    return list(db.scalars(statement.limit(500)))
 
 
 @router.post("", response_model=BookRead, status_code=status.HTTP_201_CREATED)
@@ -282,30 +340,72 @@ async def discard_inspection(
 @router.get("/search", response_model=list[SearchHit])
 def search_books(
     q: str,
+    clinic_id: UUID | None = None,
+    department_id: UUID | None = None,
+    category_id: UUID | None = None,
+    limit: int = 60,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ) -> list[SearchHit]:
-    if len(q.strip()) < 2:
+    q = q.strip()
+    if len(q) < 2:
         return []
-    ts_query = func.plainto_tsquery("german", q)
-    rank = func.ts_rank_cd(func.to_tsvector("german", BookPage.text), ts_query)
-    statement = (
-        select(Book, BookPage.page_number, func.ts_headline("german", BookPage.text, ts_query).label("snippet"))
-        .join(BookPage, BookPage.book_id == Book.id)
-        .where(func.to_tsvector("german", BookPage.text).op("@@")(ts_query))
-        .order_by(rank.desc())
-        .limit(50)
-    )
-    rows = db.execute(statement).all()
+
+    ts_expression = _build_tsquery(q)
+    limit = max(1, min(limit, 200))
+
+    def _apply_scope(stmt):
+        if clinic_id or department_id or category_id:
+            stmt = stmt.join(MediaPlacement, MediaPlacement.book_id == Book.id)
+            if clinic_id:
+                stmt = stmt.where(MediaPlacement.clinic_id == clinic_id)
+            if department_id:
+                stmt = stmt.where(MediaPlacement.department_id == department_id)
+            if category_id:
+                stmt = stmt.where(MediaPlacement.category_id == category_id)
+        return stmt
+
+    rows: list = []
+
+    if ts_expression:
+        ts_query = func.to_tsquery("german", ts_expression)
+        rank = func.ts_rank_cd(func.to_tsvector("german", BookPage.text), ts_query)
+        headline = func.ts_headline(
+            "german",
+            BookPage.text,
+            ts_query,
+            "MaxFragments=2,MinWords=4,MaxWords=18,StartSel=<mark>,StopSel=</mark>",
+        ).label("snippet")
+        statement = (
+            select(Book, BookPage.page_number, headline)
+            .join(BookPage, BookPage.book_id == Book.id)
+            .where(func.to_tsvector("german", BookPage.text).op("@@")(ts_query))
+        )
+        statement = _apply_scope(statement).order_by(rank.desc()).limit(limit)
+        try:
+            rows = db.execute(statement).all()
+        except Exception:  # malformed tsquery → fallback
+            rows = []
+
     if not rows:
-        like = f"%{q}%"
-        rows = db.execute(
-            select(Book, BookPage.page_number, BookPage.text)
+        like = f"%{q.replace('*', '%')}%"
+        fallback = (
+            select(Book, BookPage.page_number, BookPage.text.label("snippet"))
             .join(BookPage, BookPage.book_id == Book.id)
             .where(BookPage.text.ilike(like))
-            .limit(50)
-        ).all()
-    return [SearchHit(book=book, page_number=page, snippet=(snippet or "")[:500]) for book, page, snippet in rows]
+        )
+        fallback = _apply_scope(fallback).limit(limit)
+        rows = db.execute(fallback).all()
+
+    hits: list[SearchHit] = []
+    seen: set[tuple] = set()
+    for book, page, snippet in rows:
+        key = (book.id, page)
+        if key in seen:
+            continue
+        seen.add(key)
+        hits.append(SearchHit(book=book, page_number=page, snippet=(snippet or "")[:500]))
+    return hits
 
 
 @router.get("/{book_id}", response_model=BookRead)

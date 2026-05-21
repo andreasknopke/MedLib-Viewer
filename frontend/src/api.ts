@@ -2,6 +2,12 @@ import type { Book, Bookmark, Category, Clinic, DashboardOverview, Department, H
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
+export interface SearchScope {
+  clinicId?: string
+  departmentId?: string
+  categoryId?: string
+}
+
 export interface InspectMetadata {
   source?: string | null
   title?: string | null
@@ -193,12 +199,22 @@ export class ApiClient {
     })
   }
 
-  books(query = '') {
-    return this.request<Book[]>(`/api/books${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+  books(query = '', scope?: SearchScope) {
+    const params = new URLSearchParams()
+    if (query) params.set('q', query)
+    if (scope?.clinicId) params.set('clinic_id', scope.clinicId)
+    if (scope?.departmentId) params.set('department_id', scope.departmentId)
+    if (scope?.categoryId) params.set('category_id', scope.categoryId)
+    const qs = params.toString()
+    return this.request<Book[]>(`/api/books${qs ? `?${qs}` : ''}`)
   }
 
-  search(query: string) {
-    return this.request<SearchHit[]>(`/api/books/search?q=${encodeURIComponent(query)}`)
+  search(query: string, scope?: SearchScope) {
+    const params = new URLSearchParams({ q: query })
+    if (scope?.clinicId) params.set('clinic_id', scope.clinicId)
+    if (scope?.departmentId) params.set('department_id', scope.departmentId)
+    if (scope?.categoryId) params.set('category_id', scope.categoryId)
+    return this.request<SearchHit[]>(`/api/books/search?${params.toString()}`)
   }
 
   page(bookId: string, pageNumber: number) {
