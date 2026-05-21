@@ -178,8 +178,13 @@ function App() {
     }
   }
 
-  function openBook(book: Book) {
+  const [readerInitialPage, setReaderInitialPage] = useState<number | undefined>(undefined)
+  const [readerInitialTerm, setReaderInitialTerm] = useState<string>('')
+
+  function openBook(book: Book, pageNumber?: number, highlightTerm?: string) {
     setSelectedBook(book)
+    setReaderInitialPage(pageNumber)
+    setReaderInitialTerm(highlightTerm ?? '')
     setView('reader')
   }
 
@@ -255,6 +260,7 @@ function App() {
                 taxonomy={taxonomy}
                 onScopeChange={(next) => void changeScope(next)}
                 onOpenBook={openBook}
+                onOpenHit={(book, pageNumber) => openBook(book, pageNumber, searchQuery)}
                 onClear={() => {
                   setSearchQuery('')
                   setSearchHits([])
@@ -268,8 +274,12 @@ function App() {
               <Reader
                 book={selectedBook}
                 query={searchQuery}
+                initialPage={readerInitialPage}
+                initialTerm={readerInitialTerm}
                 onBack={() => {
                   setSelectedBook(null)
+                  setReaderInitialPage(undefined)
+                  setReaderInitialTerm('')
                   setView(searchHits.length > 0 ? 'search' : 'library')
                 }}
                 onSave={saveToWorkspace}
@@ -850,6 +860,7 @@ function SearchView({
   taxonomy,
   onScopeChange,
   onOpenBook,
+  onOpenHit,
   onClear,
 }: {
   query: string
@@ -860,6 +871,7 @@ function SearchView({
   taxonomy: TaxonomyData
   onScopeChange: (next: SearchScope) => void
   onOpenBook: (book: Book) => void
+  onOpenHit: (book: Book, pageNumber: number) => void
   onClear: () => void
 }) {
   const grouped = useMemo(() => groupHitsByBook(hits), [hits])
@@ -923,6 +935,7 @@ function SearchView({
                 entry={entry}
                 query={query}
                 onOpen={() => onOpenBook(entry.book)}
+                onOpenHit={(pageNumber) => onOpenHit(entry.book, pageNumber)}
               />
             ))}
           </div>
@@ -950,10 +963,12 @@ function SearchResultCard({
   entry,
   query,
   onOpen,
+  onOpenHit,
 }: {
   entry: { book: Book; hits: SearchHit[] }
   query: string
   onOpen: () => void
+  onOpenHit: (pageNumber: number) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const visible = expanded ? entry.hits : entry.hits.slice(0, 3)
@@ -982,7 +997,7 @@ function SearchResultCard({
               key={`${hit.page_number ?? 'na'}-${index}`}
               type="button"
               className="snippet block w-full rounded-md border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-left text-[12px] leading-5 text-slate-700 hover:border-amber-200"
-              onClick={onOpen}
+              onClick={() => (hit.page_number ? onOpenHit(hit.page_number) : onOpen())}
             >
               <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                 Seite {hit.page_number ?? '–'}
@@ -2601,24 +2616,30 @@ type PageLayout = 'single' | 'double'
 function Reader({
   book,
   query,
+  initialPage,
+  initialTerm,
   onBack,
   onSave,
 }: {
   book: Book
   query: string
+  initialPage?: number
+  initialTerm?: string
   onBack: () => void
   onSave: (book: Book) => Promise<void>
 }) {
-  const [pageNumber, setPageNumber] = useState(1)
+  const [pageNumber, setPageNumber] = useState(initialPage ?? 1)
   const [page, setPage] = useState<PageText | null>(null)
   const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null)
   const [pdfLoading, setPdfLoading] = useState(true)
   const [pdfError, setPdfError] = useState('')
   const [zoom, setZoom] = useState(1)
-  const [fitMode, setFitMode] = useState<FitMode>('width')
+  const [fitMode, setFitMode] = useState<FitMode>('actual')
   const [layout, setLayout] = useState<PageLayout>('single')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [hasEmbeddedText, setHasEmbeddedText] = useState(false)
+  const [matchTerm, setMatchTerm] = useState<string>(initialTerm ?? '')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [pendingHighlight, setPendingHighlight] = useState<{
@@ -2645,13 +2666,25 @@ function Reader({
     setPendingHighlight(null)
 
     loadingTask.promise
-      .then((document) => {
+      .then(async (document) => {
         if (!active) {
           void document.destroy()
           return
         }
         setPdfDocument(document)
-        setPageNumber((current) => Math.min(Math.max(current, 1), document.numPages))
+        setPageNumber((current) => Math.min(Math.max(initialPage ?? current, 1), document.numPages))
+        // Detect embedded text by sampling first page's textContent
+        try {
+          const firstPage = await document.getPage(1)
+          const textContent = await firstPage.getTextContent()
+          const totalChars = textContent.items.reduce(
+            (sum, item) => sum + (('str' in item && typeof item.str === 'string') ? item.str.length : 0),
+            0,
+          )
+          if (active) setHasEmbeddedText(totalChars > 80)
+        } catch {
+          if (active) setHasEmbeddedText(false)
+        }
       })
       .catch((error: unknown) => {
         if (!active) return
@@ -2681,6 +2714,14 @@ function Reader({
     api.bookmarks(book.id).then(setBookmarks)
     api.highlights(book.id).then(setHighlights)
   }, [book.id, pageNumber])
+
+  useEffect(() => {
+    if (initialPage && initialPage >= 1) setPageNumber(initialPage)
+  }, [initialPage])
+
+  useEffect(() => {
+    setMatchTerm(initialTerm ?? '')
+  }, [initialTerm])
 
   useEffect(() => {
     function onFsChange() {
@@ -2920,6 +2961,7 @@ function Reader({
                 fitMode={fitMode}
                 layout={layout}
                 highlights={currentPageHighlights}
+                matchTerm={matchTerm}
                 onTextSelect={(selection) => setPendingHighlight(selection)}
               />
               {layout === 'double' && pageNumber + 1 <= pageCount && (
@@ -2930,6 +2972,7 @@ function Reader({
                   fitMode={fitMode}
                   layout={layout}
                   highlights={secondPageHighlights}
+                  matchTerm={matchTerm}
                   onTextSelect={(selection) => setPendingHighlight(selection)}
                 />
               )}
@@ -2939,14 +2982,16 @@ function Reader({
 
         {showSidebar && !isFullscreen && (
           <aside className="reader-sidebar">
-            <section>
-              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
-              <p className="mb-2 text-[11px] text-slate-500">Volltextsuche basiert auf OCR. Markierungen via Textauswahl im PDF.</p>
-              <div
-                className="reader-text max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800"
-                dangerouslySetInnerHTML={{ __html: markedText }}
-              />
-            </section>
+            {!hasEmbeddedText && (
+              <section>
+                <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
+                <p className="mb-2 text-[11px] text-slate-500">Dieses PDF enthält keinen eingebetteten Text – Volltext stammt aus OCR.</p>
+                <div
+                  className="reader-text max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800"
+                  dangerouslySetInnerHTML={{ __html: markedText }}
+                />
+              </section>
+            )}
             <button className="btn btn-primary w-full" onClick={saveBookmark} type="button">
               Lesezeichen setzen
             </button>
@@ -3034,6 +3079,7 @@ function PdfCanvasViewer({
   fitMode,
   layout,
   highlights,
+  matchTerm,
   onTextSelect,
 }: {
   pdfDocument: PDFDocumentProxy
@@ -3042,6 +3088,7 @@ function PdfCanvasViewer({
   fitMode: FitMode
   layout: PageLayout
   highlights: Highlight[]
+  matchTerm?: string
   onTextSelect: (selection: {
     text: string
     locator: {
@@ -3054,6 +3101,7 @@ function PdfCanvasViewer({
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
   const textLayerRef = useRef<HTMLDivElement | null>(null)
+  const matchLayerRef = useRef<HTMLDivElement | null>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [rendering, setRendering] = useState(false)
 
@@ -3149,7 +3197,10 @@ function PdfCanvasViewer({
             container: textLayerRef.current,
             viewport,
           })
-          return textLayer.render()
+          return textLayer.render().then(() => {
+            if (cancelTextLayer) return
+            paintMatches()
+          })
         })
       void task.promise.finally(() => {
         if (active) setRendering(false)
@@ -3162,6 +3213,42 @@ function PdfCanvasViewer({
       cancelRender?.()
     }
   }, [containerSize.width, containerSize.height, fitMode, layout, onTextSelect, pageNumber, pdfDocument, zoom])
+
+  function paintMatches() {
+    const layer = textLayerRef.current
+    const matchLayer = matchLayerRef.current
+    if (!layer || !matchLayer) return
+    matchLayer.replaceChildren()
+    const term = (matchTerm ?? '').trim()
+    if (!term) return    // Build tokens: split on whitespace, strip wildcards/operators
+    const tokens = term
+      .split(/\s+/)
+      .map((token) => token.replace(/^[-!]+/, '').replace(/[*]+$/, ''))
+      .filter((token) => token.length >= 3 && token.toLowerCase() !== 'or')
+    if (!tokens.length) return
+    const pattern = new RegExp(
+      `(${tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+      'gi',
+    )
+    const layerRect = layer.getBoundingClientRect()
+    if (layerRect.width <= 0 || layerRect.height <= 0) return
+    const spans = layer.querySelectorAll('span')
+    for (const span of Array.from(spans)) {
+      const text = span.textContent ?? ''
+      if (!text) continue
+      pattern.lastIndex = 0
+      if (!pattern.test(text)) continue
+      const rect = span.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) continue
+      const box = document.createElement('div')
+      box.className = 'pdf-matchBox'
+      box.style.left = `${((rect.left - layerRect.left) / layerRect.width) * 100}%`
+      box.style.top = `${((rect.top - layerRect.top) / layerRect.height) * 100}%`
+      box.style.width = `${(rect.width / layerRect.width) * 100}%`
+      box.style.height = `${(rect.height / layerRect.height) * 100}%`
+      matchLayer.appendChild(box)
+    }
+  }
 
   function handleMouseUp() {
     const selection = window.getSelection()
@@ -3177,7 +3264,6 @@ function PdfCanvasViewer({
 
     const text = selection.toString().trim()
     if (!text) {
-      selection.removeAllRanges()
       return
     }
 
@@ -3194,7 +3280,6 @@ function PdfCanvasViewer({
       .filter((rect) => rect.width > 0 && rect.height > 0)
 
     if (!rects.length) {
-      selection.removeAllRanges()
       return
     }
 
@@ -3205,7 +3290,6 @@ function PdfCanvasViewer({
         rects,
       },
     })
-    selection.removeAllRanges()
   }
 
   return (
@@ -3214,6 +3298,7 @@ function PdfCanvasViewer({
       <div ref={pageRef} className="pdf-page">
         <canvas ref={canvasRef} className="pdf-canvas" />
         <div ref={textLayerRef} className="pdf-textLayer textLayer" onMouseUp={handleMouseUp} />
+        <div ref={matchLayerRef} className="pdf-matchLayer" />
         <div className="pdf-highlightLayer">
           {highlights.flatMap((highlight) =>
             (highlight.locator?.rects ?? []).map((rect, index) => (
