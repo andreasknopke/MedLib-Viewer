@@ -3,21 +3,28 @@ import {
   Activity,
   BookOpen,
   Building2,
+  ChevronLeft,
   ChevronRight,
+  Columns2,
   Database,
   Download,
   FileUp,
   FolderTree,
+  Gauge,
   LayoutDashboard,
   Library,
   LogOut,
+  Maximize2,
   Menu,
+  Minimize2,
   Minus,
   Plus,
+  Rows2,
   Search,
   Settings,
   ShieldCheck,
   Sparkles,
+  Square,
   Star,
   Users,
   X,
@@ -47,7 +54,7 @@ import type {
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 
-type ViewKey = 'dashboard' | 'library' | 'search' | 'reader' | 'admin' | 'users'
+type ViewKey = 'library' | 'search' | 'reader' | 'admin' | 'users'
 
 interface TaxonomyData {
   clinics: Clinic[]
@@ -67,15 +74,15 @@ interface NavEntry {
 }
 
 const NAV_ITEMS: NavEntry[] = [
-  { key: 'dashboard', label: 'Dashboard', description: 'Übersicht & Kennzahlen', icon: LayoutDashboard },
   { key: 'library', label: 'Bibliothek', description: 'Bestand durchsuchen & lesen', icon: BookOpen },
-  { key: 'admin', label: 'Verwaltung', description: 'Uploads, OCR, Einsortierung', icon: Settings, requires: ['admin', 'librarian'] },
-  { key: 'users', label: 'Benutzer', description: 'Konten & Rollen', icon: Users, requires: ['admin', 'librarian'] },
+  { key: 'search', label: 'Suche', description: 'Volltext mit Wildcards', icon: Search },
+  { key: 'admin', label: 'Verwaltung', description: 'Uploads, OCR, Kennzahlen', icon: Settings, requires: ['admin', 'librarian'] },
+  { key: 'users', label: 'Benutzer', description: 'Mein Zugang & Verwaltung', icon: Users },
 ]
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
-  const [view, setView] = useState<ViewKey>('dashboard')
+  const [view, setView] = useState<ViewKey>('library')
   const [books, setBooks] = useState<Book[]>([])
   const [selectedBook, setSelectedBook] = useState<Book | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -226,19 +233,6 @@ function App() {
 
         <main className="app-content">
           <div className="mx-auto w-full max-w-screen-2xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
-            {view === 'dashboard' && (
-              <DashboardView
-                user={user}
-                books={books}
-                workspace={workspace}
-                dashboard={dashboard}
-                onRefresh={loadDashboard}
-                onOpenBook={openBook}
-                onJumpToLibrary={() => setView('library')}
-                onUserChanged={setUser}
-              />
-            )}
-
             {view === 'library' && (
               <LibraryView
                 books={books}
@@ -285,13 +279,17 @@ function App() {
             {view === 'admin' && canAdmin && (
               <AdminView
                 books={books}
+                dashboard={dashboard}
+                onRefreshDashboard={loadDashboard}
                 onChanged={async () => {
                   await Promise.all([loadBooks(), loadDashboard(), loadTaxonomy()])
                 }}
               />
             )}
 
-            {view === 'users' && canAdmin && <UserManagementPanel currentUser={user} />}
+            {view === 'users' && (
+              <UsersView user={user} onUserChanged={setUser} canAdmin={canAdmin} />
+            )}
           </div>
         </main>
       </div>
@@ -566,82 +564,7 @@ function describeScope(scope: SearchScope, taxonomy: TaxonomyData) {
 
 /* ============================== Views ============================== */
 
-function DashboardView({
-  user,
-  books,
-  workspace,
-  dashboard,
-  onRefresh,
-  onOpenBook,
-  onJumpToLibrary,
-  onUserChanged,
-}: {
-  user: User
-  books: Book[]
-  workspace: UserWorkspace | null
-  dashboard: DashboardOverview | null
-  onRefresh: () => Promise<void>
-  onOpenBook: (book: Book) => void
-  onJumpToLibrary: () => void
-  onUserChanged: (user: User) => void
-}) {
-  const recent = useMemo(
-    () =>
-      [...books]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 8),
-    [books],
-  )
-  const canAdmin = user.role === 'admin' || user.role === 'librarian'
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-          Hallo {user.full_name.split(' ')[0]} 👋
-        </h2>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Schnellzugriff auf Bestand, persönliche Sammlung und – sofern berechtigt – Operations.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Bestand" value={books.length} hint="Bücher & Journale" />
-        <StatTile label="Meine Sammlung" value={workspace?.saved_media.length ?? 0} hint="gemerkte Titel" />
-        <StatTile label="Lesezeichen" value={workspace?.bookmarks.length ?? 0} hint="Bookmarks gesamt" />
-        <StatTile label="Notizen" value={workspace?.notes.length ?? 0} hint="persönliche Notizen" />
-      </div>
-
-      <section className="card">
-        <div className="card-header flex items-center justify-between">
-          <div>
-            <h3 className="card-title">Neu im Regal</h3>
-            <p className="card-description">Zuletzt hinzugefügte Titel</p>
-          </div>
-          <button type="button" className="btn btn-sm btn-secondary" onClick={onJumpToLibrary}>
-            Zur Bibliothek
-          </button>
-        </div>
-        <div className="card-body pt-3">
-          {recent.length === 0 ? (
-            <p className="muted">Noch keine Titel im Bestand.</p>
-          ) : (
-            <BookGrid books={recent} onOpen={onOpenBook} />
-          )}
-        </div>
-      </section>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <WorkspaceSection workspace={workspace} onOpenBook={onOpenBook} />
-        <AccountPanel currentUser={user} onUserChanged={onUserChanged} />
-      </div>
-
-      {canAdmin && dashboard && (
-        <DashboardPanel dashboard={dashboard} onRefresh={onRefresh} />
-      )}
-    </div>
-  )
-}
+/* DashboardView removed – Kennzahlen & OCR-Pipeline leben in AdminView, Mein Zugang in UsersView. */
 
 function WorkspaceSection({
   workspace,
@@ -1088,11 +1011,102 @@ function SearchResultCard({
   )
 }
 
-function AdminView({ books, onChanged }: { books: Book[]; onChanged: () => Promise<void> }) {
+function AdminView({
+  books,
+  dashboard,
+  onRefreshDashboard,
+  onChanged,
+}: {
+  books: Book[]
+  dashboard: DashboardOverview | null
+  onRefreshDashboard: () => Promise<void>
+  onChanged: () => Promise<void>
+}) {
+  type AdminTab = 'upload' | 'taxonomy' | 'metrics' | 'ocr'
+  const [tab, setTab] = useState<AdminTab>('upload')
+
+  const tabs: { key: AdminTab; label: string; icon: typeof FileUp }[] = [
+    { key: 'upload', label: 'Hochladen', icon: FileUp },
+    { key: 'taxonomy', label: 'Einsortierung', icon: FolderTree },
+    { key: 'metrics', label: 'Kennzahlen', icon: Gauge },
+    { key: 'ocr', label: 'OCR-Pipeline', icon: Activity },
+  ]
+
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <UploadPanel onUploaded={onChanged} />
-      <TaxonomyPanel books={books} onChanged={onChanged} />
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1 rounded-md border border-slate-200 bg-white p-1">
+        {tabs.map((entry) => {
+          const Icon = entry.icon
+          const isActive = tab === entry.key
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              onClick={() => setTab(entry.key)}
+              className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition ${
+                isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {entry.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {tab === 'upload' && <UploadPanel onUploaded={onChanged} />}
+      {tab === 'taxonomy' && <TaxonomyPanel books={books} onChanged={onChanged} />}
+      {tab === 'metrics' && <MetricsPanel dashboard={dashboard} onRefresh={onRefreshDashboard} />}
+      {tab === 'ocr' && <OcrPipelinePanel dashboard={dashboard} onRefresh={onRefreshDashboard} />}
+    </div>
+  )
+}
+
+function UsersView({
+  user,
+  onUserChanged,
+  canAdmin,
+}: {
+  user: User
+  onUserChanged: (user: User) => void
+  canAdmin: boolean
+}) {
+  type UserTab = 'account' | 'management'
+  const [tab, setTab] = useState<UserTab>('account')
+
+  const tabs: { key: UserTab; label: string; icon: typeof ShieldCheck }[] = [
+    { key: 'account', label: 'Mein Zugang', icon: ShieldCheck },
+    ...(canAdmin
+      ? [{ key: 'management' as const, label: 'Benutzerverwaltung', icon: Users }]
+      : []),
+  ]
+
+  return (
+    <div className="space-y-4">
+      {tabs.length > 1 && (
+        <div className="flex flex-wrap gap-1 rounded-md border border-slate-200 bg-white p-1">
+          {tabs.map((entry) => {
+            const Icon = entry.icon
+            const isActive = tab === entry.key
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                onClick={() => setTab(entry.key)}
+                className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition ${
+                  isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {entry.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {tab === 'account' && <AccountPanel currentUser={user} onUserChanged={onUserChanged} />}
+      {tab === 'management' && canAdmin && <UserManagementPanel currentUser={user} />}
     </div>
   )
 }
@@ -1277,7 +1291,7 @@ function jobStatusBadge(status: DashboardJob['status']) {
   return 'badge badge-slate'
 }
 
-function DashboardPanel({
+function MetricsPanel({
   dashboard,
   onRefresh,
 }: {
@@ -1299,7 +1313,7 @@ function DashboardPanel({
     return (
       <section className="card">
         <div className="card-body">
-          <p className="muted">Dashboard wird geladen …</p>
+          <p className="muted">Kennzahlen werden geladen …</p>
         </div>
       </section>
     )
@@ -1309,15 +1323,15 @@ function DashboardPanel({
     <section className="card">
       <div className="card-header flex items-center justify-between">
         <div>
-          <h3 className="card-title">Operations</h3>
-          <p className="card-description">Kennzahlen und OCR-Pipeline</p>
+          <h3 className="card-title">Kennzahlen</h3>
+          <p className="card-description">Bestand, Datenbank und Fachgebiete</p>
         </div>
         <button className="btn btn-sm btn-secondary" onClick={refresh}>
           {refreshing ? 'Aktualisiere …' : 'Aktualisieren'}
         </button>
       </div>
       <div className="card-body space-y-4 pt-3">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {dashboard.metrics.map((metric) => (
             <div key={metric.key} className="rounded-md border border-slate-200 bg-slate-50/50 px-3 py-2.5">
               <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
@@ -1326,52 +1340,12 @@ function DashboardPanel({
           ))}
         </div>
 
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <Activity className="h-4 w-4 text-indigo-600" />
-            <h4 className="text-sm font-semibold text-slate-900">OCR-Jobs</h4>
-          </div>
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Object.entries(dashboard.job_status_counts).map(([status, count]) => (
-              <div key={status} className="rounded-md bg-slate-50 px-2.5 py-2 text-center">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                  {jobStatusLabel(status as DashboardJob['status'])}
-                </p>
-                <p className="mt-1 text-base font-semibold text-slate-900">{count}</p>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-2">
-            {dashboard.recent_jobs.map((job) => (
-              <div key={job.id} className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-900">{job.book_title}</p>
-                    <p className="truncate text-slate-500">{job.message || 'OCR-Job ohne Zusatzmeldung'}</p>
-                  </div>
-                  <span className={jobStatusBadge(job.status)}>{jobStatusLabel(job.status)}</span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className={`h-full rounded-full ${job.status === 'failed' ? 'bg-rose-500' : 'bg-indigo-600'}`}
-                    style={{ width: `${job.progress}%` }}
-                  />
-                </div>
-                <div className="mt-1 flex justify-between text-[11px] text-slate-500">
-                  <span>{job.progress}%</span>
-                  <span>{new Date(job.updated_at).toLocaleString('de-DE')}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="border-t border-slate-100 pt-4">
           <div className="mb-2 flex items-center gap-2">
             <Database className="h-4 w-4 text-indigo-600" />
             <h4 className="text-sm font-semibold text-slate-900">Datenbank</h4>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {dashboard.records_by_table.map((metric) => (
               <div key={metric.key} className="rounded-md bg-slate-50 px-3 py-2">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
@@ -1432,6 +1406,102 @@ function DashboardPanel({
         )}
       </div>
     </section>
+  )
+}
+
+function OcrPipelinePanel({
+  dashboard,
+  onRefresh,
+}: {
+  dashboard: DashboardOverview | null
+  onRefresh: () => Promise<void>
+}) {
+  const [refreshing, setRefreshing] = useState(false)
+
+  async function refresh() {
+    setRefreshing(true)
+    try {
+      await onRefresh()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  if (!dashboard) {
+    return (
+      <section className="card">
+        <div className="card-body">
+          <p className="muted">OCR-Pipeline wird geladen …</p>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="card">
+      <div className="card-header flex items-center justify-between">
+        <div>
+          <h3 className="card-title flex items-center gap-2">
+            <Activity className="h-4 w-4 text-indigo-600" /> OCR-Pipeline
+          </h3>
+          <p className="card-description">Status und Verlauf laufender Jobs</p>
+        </div>
+        <button className="btn btn-sm btn-secondary" onClick={refresh}>
+          {refreshing ? 'Aktualisiere …' : 'Aktualisieren'}
+        </button>
+      </div>
+      <div className="card-body space-y-4 pt-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {Object.entries(dashboard.job_status_counts).map(([status, count]) => (
+            <div key={status} className="rounded-md bg-slate-50 px-2.5 py-2 text-center">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                {jobStatusLabel(status as DashboardJob['status'])}
+              </p>
+              <p className="mt-1 text-base font-semibold text-slate-900">{count}</p>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {dashboard.recent_jobs.map((job) => (
+            <div key={job.id} className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-900">{job.book_title}</p>
+                  <p className="truncate text-slate-500">{job.message || 'OCR-Job ohne Zusatzmeldung'}</p>
+                </div>
+                <span className={jobStatusBadge(job.status)}>{jobStatusLabel(job.status)}</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${job.status === 'failed' ? 'bg-rose-500' : 'bg-indigo-600'}`}
+                  style={{ width: `${job.progress}%` }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between text-[11px] text-slate-500">
+                <span>{job.progress}%</span>
+                <span>{new Date(job.updated_at).toLocaleString('de-DE')}</span>
+              </div>
+            </div>
+          ))}
+          {dashboard.recent_jobs.length === 0 && <p className="muted">Aktuell keine OCR-Jobs.</p>}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function DashboardPanel({
+  dashboard,
+  onRefresh,
+}: {
+  dashboard: DashboardOverview | null
+  onRefresh: () => Promise<void>
+}) {
+  return (
+    <div className="space-y-4">
+      <MetricsPanel dashboard={dashboard} onRefresh={onRefresh} />
+      <OcrPipelinePanel dashboard={dashboard} onRefresh={onRefresh} />
+    </div>
   )
 }
 
@@ -2525,6 +2595,9 @@ function BookCover({ book, size = 'md' }: { book: Book; size?: CoverSize }) {
 
 /* ============================== Reader ============================== */
 
+type FitMode = 'width' | 'page' | 'height' | 'actual'
+type PageLayout = 'single' | 'double'
+
 function Reader({
   book,
   query,
@@ -2542,6 +2615,12 @@ function Reader({
   const [pdfLoading, setPdfLoading] = useState(true)
   const [pdfError, setPdfError] = useState('')
   const [zoom, setZoom] = useState(1)
+  const [fitMode, setFitMode] = useState<FitMode>('width')
+  const [layout, setLayout] = useState<PageLayout>('single')
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
   const [pendingHighlight, setPendingHighlight] = useState<{
     text: string
     locator: {
@@ -2603,6 +2682,30 @@ function Reader({
     api.highlights(book.id).then(setHighlights)
   }, [book.id, pageNumber])
 
+  useEffect(() => {
+    function onFsChange() {
+      setIsFullscreen(document.fullscreenElement === containerRef.current)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return
+      if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+        setPageNumber((current) => Math.min(pageCount || current + 1, current + (layout === 'double' ? 2 : 1)))
+      } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+        setPageNumber((current) => Math.max(1, current - (layout === 'double' ? 2 : 1)))
+      } else if (event.key === 'Escape' && isFullscreen) {
+        void document.exitFullscreen()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, isFullscreen, pdfDocument])
+
   const markedText = useMemo(() => {
     if (!page?.text || !query.trim()) return escapeHtml(page?.text ?? '')
     return highlightTerm(page.text, query)
@@ -2614,6 +2717,16 @@ function Reader({
       highlights.filter(
         (highlight) =>
           highlight.page_number === pageNumber &&
+          Array.isArray(highlight.locator?.rects) &&
+          (highlight.locator?.rects?.length ?? 0) > 0,
+      ),
+    [highlights, pageNumber],
+  )
+  const secondPageHighlights = useMemo(
+    () =>
+      highlights.filter(
+        (highlight) =>
+          highlight.page_number === pageNumber + 1 &&
           Array.isArray(highlight.locator?.rects) &&
           (highlight.locator?.rects?.length ?? 0) > 0,
       ),
@@ -2636,7 +2749,7 @@ function Reader({
     if (!pendingHighlight) return
     const highlight = await api.createHighlightWithLocator(
       book.id,
-      pageNumber,
+      pendingHighlight.locator.page_number,
       pendingHighlight.text,
       pendingHighlight.locator,
     )
@@ -2644,166 +2757,271 @@ function Reader({
     setPendingHighlight(null)
   }
 
+  async function toggleFullscreen() {
+    if (!containerRef.current) return
+    if (document.fullscreenElement === containerRef.current) {
+      await document.exitFullscreen()
+    } else {
+      await containerRef.current.requestFullscreen()
+    }
+  }
+
+  const fitButtons: { mode: FitMode; label: string; icon: typeof Maximize2; title: string }[] = [
+    { mode: 'width', label: 'Breite', icon: Rows2, title: 'An Breite anpassen' },
+    { mode: 'page', label: 'Seite', icon: Square, title: 'Ganze Seite' },
+    { mode: 'height', label: 'Höhe', icon: Columns2, title: 'An Höhe anpassen' },
+    { mode: 'actual', label: '100 %', icon: Maximize2, title: 'Originalgröße' },
+  ]
+
   return (
-    <section className="card">
-      <div className="card-header flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <button className="text-xs font-medium text-indigo-700 hover:text-indigo-800" onClick={onBack} type="button">
-            ← Zur Bibliothek
-          </button>
-          <h3 className="mt-1 truncate text-base font-semibold text-slate-900">{book.title}</h3>
-          <p className="truncate text-xs text-slate-500">
-            {[book.authors, book.publisher, book.year].filter(Boolean).join(' · ')}
-          </p>
+    <section ref={containerRef} className={`reader-shell ${isFullscreen ? 'reader-fullscreen' : ''}`}>
+      <div className="reader-toolbar">
+        <div className="flex min-w-0 items-center gap-2">
+          {!isFullscreen && (
+            <button className="btn btn-sm btn-secondary" onClick={onBack} type="button">
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Zurück
+            </button>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">{book.title}</p>
+            <p className="truncate text-[11px] text-slate-500">
+              {[book.authors, book.publisher, book.year].filter(Boolean).join(' · ')}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-1.5">
-          <button className="btn btn-sm btn-secondary" onClick={() => onSave(book)} type="button">
-            <Star className="h-3.5 w-3.5" /> Merken
-          </button>
-          <button className="btn btn-sm btn-secondary" onClick={() => api.downloadBook(book)} type="button">
-            <Download className="h-3.5 w-3.5" /> PDF
-          </button>
+
+        <div className="reader-toolbar-controls">
+          <div className="reader-toolbar-group" role="group" aria-label="Seitennavigation">
+            <button
+              className="btn btn-sm btn-ghost"
+              type="button"
+              disabled={pageNumber <= 1}
+              onClick={() => setPageNumber(Math.max(1, pageNumber - (layout === 'double' ? 2 : 1)))}
+              title="Vorherige Seite"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <input
+              type="number"
+              className="reader-page-input"
+              min={1}
+              max={pageCount || undefined}
+              value={pageNumber}
+              onChange={(event) => {
+                const value = Number(event.target.value)
+                if (Number.isFinite(value) && value >= 1) {
+                  setPageNumber(Math.min(pageCount || value, Math.max(1, Math.floor(value))))
+                }
+              }}
+            />
+            <span className="text-xs text-slate-500">/ {pageCount || '?'}</span>
+            <button
+              className="btn btn-sm btn-ghost"
+              type="button"
+              disabled={pageCount > 0 && pageNumber >= pageCount}
+              onClick={() => setPageNumber(Math.min(pageCount || pageNumber + 1, pageNumber + (layout === 'double' ? 2 : 1)))}
+              title="Nächste Seite"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="reader-toolbar-group" role="group" aria-label="Zoom">
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setZoom((current) => Math.max(0.4, Number((current - 0.1).toFixed(2))))}
+              disabled={zoom <= 0.4}
+              title="Verkleinern"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className="reader-zoom-label">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setZoom((current) => Math.min(4, Number((current + 0.1).toFixed(2))))}
+              disabled={zoom >= 4}
+              title="Vergrößern"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="reader-toolbar-group" role="group" aria-label="Ansicht">
+            {fitButtons.map((entry) => {
+              const Icon = entry.icon
+              const isActive = fitMode === entry.mode
+              return (
+                <button
+                  key={entry.mode}
+                  type="button"
+                  className={`reader-fit-btn ${isActive ? 'reader-fit-btn-active' : ''}`}
+                  onClick={() => {
+                    setFitMode(entry.mode)
+                    setZoom(1)
+                  }}
+                  title={entry.title}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="hidden xl:inline">{entry.label}</span>
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              className={`reader-fit-btn ${layout === 'double' ? 'reader-fit-btn-active' : ''}`}
+              onClick={() => setLayout(layout === 'double' ? 'single' : 'double')}
+              title="Doppelseite"
+            >
+              <Columns2 className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline">2 Seiten</span>
+            </button>
+          </div>
+
+          <div className="reader-toolbar-group" role="group" aria-label="Werkzeuge">
+            <button className="btn btn-sm btn-ghost" type="button" onClick={() => onSave(book)} title="Merken">
+              <Star className="h-3.5 w-3.5" />
+            </button>
+            <button className="btn btn-sm btn-ghost" type="button" onClick={() => api.downloadBook(book)} title="PDF herunterladen">
+              <Download className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              type="button"
+              onClick={() => setShowSidebar((value) => !value)}
+              title={showSidebar ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
+            >
+              {showSidebar ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              className="btn btn-sm btn-ghost"
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
+            >
+              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
       </div>
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <article className="min-h-[36rem] border-r border-slate-100 bg-slate-50 p-4 lg:p-5">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs">
-              <button
-                disabled={pageNumber <= 1}
-                onClick={() => setPageNumber(pageNumber - 1)}
-                className="btn btn-sm btn-secondary"
-              >
-                Zurück
-              </button>
-              <span className="font-medium text-slate-700">
-                Seite {pageNumber} / {pageCount || '?'}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => setZoom((current) => Math.max(0.75, Number((current - 0.1).toFixed(2))))}
-                  disabled={zoom <= 0.75}
-                >
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <span className="min-w-12 text-center font-medium text-slate-700">{Math.round(zoom * 100)}%</span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => setZoom((current) => Math.min(2.5, Number((current + 0.1).toFixed(2))))}
-                  disabled={zoom >= 2.5}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <button
-                disabled={pageCount > 0 && pageNumber >= pageCount}
-                onClick={() => setPageNumber(pageNumber + 1)}
-                className="btn btn-sm btn-secondary"
-              >
-                Weiter
-              </button>
-            </div>
-            <div className="pdf-shell">
-              {pdfLoading && <div className="pdf-status">PDF wird geladen …</div>}
-              {pdfError && !pdfLoading && <div className="pdf-status pdf-status-error">{pdfError}</div>}
-              {pdfDocument && !pdfError && (
+
+      <div className={`reader-body ${showSidebar && !isFullscreen ? 'reader-body-with-sidebar' : ''}`}>
+        <div ref={viewportRef} className="reader-viewport">
+          {pdfLoading && <div className="pdf-status">PDF wird geladen …</div>}
+          {pdfError && !pdfLoading && <div className="pdf-status pdf-status-error">{pdfError}</div>}
+          {pdfDocument && !pdfError && (
+            <div className={`reader-pages reader-pages-${layout}`}>
+              <PdfCanvasViewer
+                pdfDocument={pdfDocument}
+                pageNumber={pageNumber}
+                zoom={zoom}
+                fitMode={fitMode}
+                layout={layout}
+                highlights={currentPageHighlights}
+                onTextSelect={(selection) => setPendingHighlight(selection)}
+              />
+              {layout === 'double' && pageNumber + 1 <= pageCount && (
                 <PdfCanvasViewer
                   pdfDocument={pdfDocument}
-                  pageNumber={pageNumber}
+                  pageNumber={pageNumber + 1}
                   zoom={zoom}
-                  highlights={currentPageHighlights}
+                  fitMode={fitMode}
+                  layout={layout}
+                  highlights={secondPageHighlights}
                   onTextSelect={(selection) => setPendingHighlight(selection)}
                 />
               )}
             </div>
-          </div>
-        </article>
-        <aside className="space-y-4 p-4">
-          <section>
-            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
-            <p className="mb-2 text-[11px] text-slate-500">Suche und Volltext basieren auf OCR. Markierungen kommen jetzt aus der PDF-Textauswahl links.</p>
-            <div
-              className="reader-text max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800"
-              dangerouslySetInnerHTML={{ __html: markedText }}
-            />
-          </section>
-          <button className="btn btn-primary w-full" onClick={saveBookmark} type="button">
-            Lesezeichen setzen
-          </button>
-          <section className="rounded-md border border-amber-200 bg-amber-50 p-3">
-            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">PDF-Markierung</h4>
-            {pendingHighlight ? (
-              <>
-                <p className="line-clamp-3 text-xs leading-5 text-slate-700">{pendingHighlight.text}</p>
-                <div className="mt-2 flex gap-2">
-                  <button className="btn btn-sm btn-primary" onClick={saveHighlight} type="button">
-                    Markierung speichern
-                  </button>
-                  <button className="btn btn-sm btn-secondary" onClick={() => setPendingHighlight(null)} type="button">
-                    Verwerfen
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-slate-600">Text direkt im PDF markieren, dann hier speichern.</p>
-            )}
-          </section>
-          <section>
-            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notiz zur Seite</h4>
-            <textarea
-              className="w-full"
-              value={noteText}
-              onChange={(event) => setNoteText(event.target.value)}
-            />
-            <button className="btn btn-sm btn-secondary mt-1.5" onClick={saveNote} type="button">
-              Speichern
+          )}
+        </div>
+
+        {showSidebar && !isFullscreen && (
+          <aside className="reader-sidebar">
+            <section>
+              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
+              <p className="mb-2 text-[11px] text-slate-500">Volltextsuche basiert auf OCR. Markierungen via Textauswahl im PDF.</p>
+              <div
+                className="reader-text max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800"
+                dangerouslySetInnerHTML={{ __html: markedText }}
+              />
+            </section>
+            <button className="btn btn-primary w-full" onClick={saveBookmark} type="button">
+              Lesezeichen setzen
             </button>
-          </section>
-          <section>
-            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Lesezeichen</h4>
-            {bookmarks.map((bookmark) => (
-              <button
-                key={bookmark.id}
-                className="mb-1 block w-full rounded-md bg-slate-50 px-2.5 py-1.5 text-left text-xs hover:bg-slate-100"
-                onClick={() => setPageNumber(bookmark.page_number)}
-                type="button"
-              >
-                {bookmark.label}
+            <section className="rounded-md border border-amber-200 bg-amber-50 p-3">
+              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">PDF-Markierung</h4>
+              {pendingHighlight ? (
+                <>
+                  <p className="line-clamp-3 text-xs leading-5 text-slate-700">{pendingHighlight.text}</p>
+                  <div className="mt-2 flex gap-2">
+                    <button className="btn btn-sm btn-primary" onClick={saveHighlight} type="button">
+                      Markierung speichern
+                    </button>
+                    <button className="btn btn-sm btn-secondary" onClick={() => setPendingHighlight(null)} type="button">
+                      Verwerfen
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-slate-600">Text direkt im PDF markieren, dann hier speichern.</p>
+              )}
+            </section>
+            <section>
+              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notiz zur Seite</h4>
+              <textarea
+                className="w-full"
+                value={noteText}
+                onChange={(event) => setNoteText(event.target.value)}
+              />
+              <button className="btn btn-sm btn-secondary mt-1.5" onClick={saveNote} type="button">
+                Speichern
               </button>
-            ))}
-            {!bookmarks.length && <p className="muted">Noch keine Lesezeichen.</p>}
-          </section>
-          <section>
-            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Markierungen</h4>
-            {highlights.map((highlight) => (
-              <button
-                key={highlight.id}
-                className="mb-1 block w-full rounded-md bg-amber-50 px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-amber-100"
-                onClick={() => setPageNumber(highlight.page_number)}
-                type="button"
-              >
-                <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                  Seite {highlight.page_number}
-                </span>
-                {highlight.selected_text}
-              </button>
-            ))}
-            {!highlights.length && <p className="muted">Noch keine Markierungen.</p>}
-          </section>
-          <section>
-            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notizen</h4>
-            {notes.map((note) => (
-              <p key={note.id} className="mb-1 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
-                <span className="font-medium text-slate-900">S. {note.page_number}: </span>
-                <span className="text-slate-600">{note.body}</span>
-              </p>
-            ))}
-            {!notes.length && <p className="muted">Noch keine Notizen.</p>}
-          </section>
-        </aside>
+            </section>
+            <section>
+              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Lesezeichen</h4>
+              {bookmarks.map((bookmark) => (
+                <button
+                  key={bookmark.id}
+                  className="mb-1 block w-full rounded-md bg-slate-50 px-2.5 py-1.5 text-left text-xs hover:bg-slate-100"
+                  onClick={() => setPageNumber(bookmark.page_number)}
+                  type="button"
+                >
+                  {bookmark.label}
+                </button>
+              ))}
+              {!bookmarks.length && <p className="muted">Noch keine Lesezeichen.</p>}
+            </section>
+            <section>
+              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Markierungen</h4>
+              {highlights.map((highlight) => (
+                <button
+                  key={highlight.id}
+                  className="mb-1 block w-full rounded-md bg-amber-50 px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-amber-100"
+                  onClick={() => setPageNumber(highlight.page_number)}
+                  type="button"
+                >
+                  <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                    Seite {highlight.page_number}
+                  </span>
+                  {highlight.selected_text}
+                </button>
+              ))}
+              {!highlights.length && <p className="muted">Noch keine Markierungen.</p>}
+            </section>
+            <section>
+              <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notizen</h4>
+              {notes.map((note) => (
+                <p key={note.id} className="mb-1 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs">
+                  <span className="font-medium text-slate-900">S. {note.page_number}: </span>
+                  <span className="text-slate-600">{note.body}</span>
+                </p>
+              ))}
+              {!notes.length && <p className="muted">Noch keine Notizen.</p>}
+            </section>
+          </aside>
+        )}
       </div>
     </section>
   )
@@ -2813,12 +3031,16 @@ function PdfCanvasViewer({
   pdfDocument,
   pageNumber,
   zoom,
+  fitMode,
+  layout,
   highlights,
   onTextSelect,
 }: {
   pdfDocument: PDFDocumentProxy
   pageNumber: number
   zoom: number
+  fitMode: FitMode
+  layout: PageLayout
   highlights: Highlight[]
   onTextSelect: (selection: {
     text: string
@@ -2832,25 +3054,29 @@ function PdfCanvasViewer({
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
   const textLayerRef = useRef<HTMLDivElement | null>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [rendering, setRendering] = useState(false)
 
   useEffect(() => {
     const wrapper = wrapperRef.current
     if (!wrapper) return
+    // we resize to the parent .reader-viewport, which sets available area
+    const parent = wrapper.parentElement?.parentElement // .reader-viewport
+    const target = parent ?? wrapper
 
-    const updateWidth = () => setContainerWidth(wrapper.clientWidth)
-    updateWidth()
+    const update = () => {
+      setContainerSize({ width: target.clientWidth, height: target.clientHeight })
+    }
+    update()
 
-    const observer = new ResizeObserver(updateWidth)
-    observer.observe(wrapper)
-
+    const observer = new ResizeObserver(update)
+    observer.observe(target)
     return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !containerWidth) return
+    if (!canvas || !containerSize.width || !containerSize.height) return
 
     let active = true
     let cancelRender: (() => void) | null = null
@@ -2863,8 +3089,24 @@ function PdfCanvasViewer({
       if (!active) return
 
       const baseViewport = page.getViewport({ scale: 1 })
-      const fitScale = Math.max(0.5, ((containerWidth - 32) / baseViewport.width) * zoom)
-      const viewport = page.getViewport({ scale: fitScale })
+      const padding = 24
+      const availableWidth = Math.max(80, containerSize.width - padding * 2) / (layout === 'double' ? 2 : 1)
+      const availableHeight = Math.max(80, containerSize.height - padding * 2)
+
+      let fitScale: number
+      if (fitMode === 'width') {
+        fitScale = availableWidth / baseViewport.width
+      } else if (fitMode === 'height') {
+        fitScale = availableHeight / baseViewport.height
+      } else if (fitMode === 'page') {
+        fitScale = Math.min(availableWidth / baseViewport.width, availableHeight / baseViewport.height)
+      } else {
+        // actual size: 96 dpi (1 unit = 1px). The pdf default is 72dpi so scale ~= 96/72 to feel like print.
+        fitScale = 96 / 72
+      }
+
+      const scale = Math.max(0.2, fitScale * zoom)
+      const viewport = page.getViewport({ scale })
       const pixelRatio = window.devicePixelRatio || 1
       const context = canvas.getContext('2d')
 
@@ -2873,20 +3115,26 @@ function PdfCanvasViewer({
         return
       }
 
+      const cssWidth = Math.floor(viewport.width)
+      const cssHeight = Math.floor(viewport.height)
+
       canvas.width = Math.floor(viewport.width * pixelRatio)
       canvas.height = Math.floor(viewport.height * pixelRatio)
-      canvas.style.width = `${Math.floor(viewport.width)}px`
-      canvas.style.height = `${Math.floor(viewport.height)}px`
+      canvas.style.width = `${cssWidth}px`
+      canvas.style.height = `${cssHeight}px`
 
       if (pageRef.current) {
-        pageRef.current.style.width = `${Math.floor(viewport.width)}px`
-        pageRef.current.style.height = `${Math.floor(viewport.height)}px`
+        pageRef.current.style.width = `${cssWidth}px`
+        pageRef.current.style.height = `${cssHeight}px`
+        // pdf.js TextLayer requires --scale-factor in CSS to size text spans correctly
+        pageRef.current.style.setProperty('--scale-factor', String(scale))
       }
 
       if (textLayerRef.current) {
         textLayerRef.current.replaceChildren()
-        textLayerRef.current.style.width = `${Math.floor(viewport.width)}px`
-        textLayerRef.current.style.height = `${Math.floor(viewport.height)}px`
+        textLayerRef.current.style.width = `${cssWidth}px`
+        textLayerRef.current.style.height = `${cssHeight}px`
+        textLayerRef.current.style.setProperty('--scale-factor', String(scale))
       }
 
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
@@ -2913,7 +3161,7 @@ function PdfCanvasViewer({
       cancelTextLayer = true
       cancelRender?.()
     }
-  }, [containerWidth, onTextSelect, pageNumber, pdfDocument, zoom])
+  }, [containerSize.width, containerSize.height, fitMode, layout, onTextSelect, pageNumber, pdfDocument, zoom])
 
   function handleMouseUp() {
     const selection = window.getSelection()
@@ -2934,6 +3182,8 @@ function PdfCanvasViewer({
     }
 
     const layerRect = layer.getBoundingClientRect()
+    if (layerRect.width <= 0 || layerRect.height <= 0) return
+
     const rects = Array.from(range.getClientRects())
       .map((rect) => ({
         left: (rect.left - layerRect.left) / layerRect.width,
@@ -2963,7 +3213,7 @@ function PdfCanvasViewer({
       {rendering && <div className="pdf-rendering">Seite wird gerendert …</div>}
       <div ref={pageRef} className="pdf-page">
         <canvas ref={canvasRef} className="pdf-canvas" />
-        <div ref={textLayerRef} className="pdf-textLayer" onMouseUp={handleMouseUp} />
+        <div ref={textLayerRef} className="pdf-textLayer textLayer" onMouseUp={handleMouseUp} />
         <div className="pdf-highlightLayer">
           {highlights.flatMap((highlight) =>
             (highlight.locator?.rects ?? []).map((rect, index) => (

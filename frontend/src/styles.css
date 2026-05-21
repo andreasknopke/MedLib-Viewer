@@ -465,23 +465,33 @@ button:disabled {
   box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.15);
 }
 
+/* pdf.js TextLayer (v4+): uses --scale-factor to size text exactly to canvas */
 .pdf-textLayer {
   overflow: hidden;
   line-height: 1;
   z-index: 2;
+  opacity: 1;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: transparent;
 }
 
-.pdf-textLayer span,
-.pdf-textLayer br {
-  position: absolute;
-  transform-origin: 0 0;
-  white-space: pre;
+.pdf-textLayer :is(span, br) {
   color: transparent;
+  position: absolute;
+  white-space: pre;
   cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-textLayer span.markedContent {
+  top: 0;
+  height: 0;
 }
 
 .pdf-textLayer ::selection {
-  background: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.45);
+  color: transparent;
 }
 
 .pdf-status,
@@ -793,5 +803,199 @@ button:disabled {
 .stat-tile-hint {
   font-size: 0.72rem;
   color: #64748b;
+}
+
+
+/* ============================== Reader (Vollbild + Fit-Modi) ============================== */
+.reader-shell {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  min-height: 70vh;
+}
+.reader-shell.reader-fullscreen {
+  border-radius: 0;
+  border: 0;
+  height: 100vh;
+  min-height: 100vh;
+}
+
+.reader-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.reader-toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reader-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 0;
+  color: #475569;
+  padding: 0.3rem 0.45rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.reader-page-input {
+  width: 3rem;
+  height: 1.8rem;
+  text-align: center;
+  border-radius: 0.35rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 0.78rem;
+  padding: 0 0.25rem;
+}
+.reader-page-input::-webkit-inner-spin-button,
+.reader-page-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.reader-zoom-label {
+  min-width: 3rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.reader-fit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #475569;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.reader-fit-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.reader-fit-btn-active {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.reader-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: 1;
+  min-height: 0;
+}
+@media (min-width: 1024px) {
+  .reader-body.reader-body-with-sidebar {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+}
+
+.reader-viewport {
+  position: relative;
+  overflow: auto;
+  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  min-height: 50vh;
+}
+.reader-fullscreen .reader-viewport {
+  min-height: 0;
+  height: 100%;
+}
+
+.reader-pages {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 1.25rem;
+  min-height: 100%;
+}
+.reader-pages-double {
+  gap: 0.5rem;
+}
+
+.reader-sidebar {
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+@media (min-width: 1024px) {
+  .reader-sidebar {
+    border-top: 0;
+    border-left: 1px solid #e2e8f0;
+  }
+}
+
+.reader-fullscreen .reader-toolbar {
+  background: rgba(15, 23, 42, 0.92);
+  color: #f1f5f9;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.reader-fullscreen .reader-toolbar .btn-ghost {
+  color: #cbd5e1;
+}
+.reader-fullscreen .reader-toolbar .btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+.reader-fullscreen .reader-toolbar-group {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.reader-fullscreen .reader-page-input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+.reader-fullscreen .reader-zoom-label,
+.reader-fullscreen .reader-fit-btn {
+  color: #cbd5e1;
+}
+.reader-fullscreen .reader-fit-btn-active {
+  background: rgba(99, 102, 241, 0.3);
+  color: #e0e7ff;
 }
 
