@@ -234,10 +234,28 @@ export class ApiClient {
   }
 
   createHighlight(bookId: string, pageNumber: number, selectedText: string) {
+    return this.createHighlightWithLocator(bookId, pageNumber, selectedText)
+  }
+
+  createHighlightWithLocator(
+    bookId: string,
+    pageNumber: number,
+    selectedText: string,
+    locator?: {
+      page_number?: number
+      rects?: Array<{ left: number; top: number; width: number; height: number }>
+    },
+  ) {
     return this.request<Highlight>('/api/annotations/highlights', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ book_id: bookId, page_number: pageNumber, selected_text: selectedText, color: 'yellow' })
+      body: JSON.stringify({
+        book_id: bookId,
+        page_number: pageNumber,
+        selected_text: selectedText,
+        color: 'yellow',
+        locator: locator ?? {},
+      })
     })
   }
 
@@ -281,6 +299,12 @@ export class ApiClient {
     const query = this.assetToken()
     const fragment = page ? `#page=${page}` : ''
     return `${API_BASE}/api/books/${book.id}/file${query ? `?${query}` : ''}${fragment}`
+  }
+
+  bookViewerUrl(book: Book, page?: number) {
+    const query = this.assetToken()
+    const fragment = page ? `#page=${page}` : ''
+    return `${API_BASE}/api/books/${book.id}/viewer${query ? `?${query}` : ''}${fragment}`
   }
 
   bookCoverUrl(book: Book) {

@@ -339,6 +339,14 @@ def download_book(book_id: UUID, db: Session = Depends(get_db), _: User = Depend
     return FileResponse(book.storage_path, filename=book.source_filename, media_type="application/pdf")
 
 
+@router.get("/{book_id}/viewer")
+def view_book(book_id: UUID, db: Session = Depends(get_db), _: User = Depends(get_current_user_for_asset)) -> FileResponse:
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    return FileResponse(book.storage_path, media_type="application/pdf")
+
+
 @router.get("/{book_id}/cover")
 def get_book_cover(book_id: UUID, db: Session = Depends(get_db), _: User = Depends(get_current_user_for_asset)) -> FileResponse:
     book = db.get(Book, book_id)

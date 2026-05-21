@@ -117,6 +117,15 @@ export interface Highlight {
   page_number: number
   selected_text: string
   color: string
+  locator?: {
+    page_number?: number
+    rects?: Array<{
+      left: number
+      top: number
+      width: number
+      height: number
+    }>
+  }
 }
 
 export interface Clinic {

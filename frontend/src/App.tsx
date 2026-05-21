@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   Activity,
   BookOpen,
@@ -10,6 +10,8 @@ import {
   FolderTree,
   Library,
   LogOut,
+  Minus,
+  Plus,
   Search,
   Settings,
   ShieldCheck,
@@ -17,6 +19,9 @@ import {
   Star,
   Users,
 } from 'lucide-react'
+import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { TextLayer } from 'pdfjs-dist/web/pdf_viewer.mjs'
 import { api } from './api'
 import type { InspectMetadata, InspectResponse } from './api'
 import type {
@@ -37,6 +42,8 @@ import type {
   User,
   UserWorkspace,
 } from './types'
+
+GlobalWorkerOptions.workerSrc = pdfWorker
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -1741,7 +1748,7 @@ function coverGradient(book: Book) {
 }
 
 function BookCover({ book, compact = false }: { book: Book; compact?: boolean }) {
-  const dimensions = compact ? 'h-14 w-10' : 'h-28 w-20'
+  const dimensions = compact ? 'h-12 w-8' : 'h-24 w-16'
   const [imageFailed, setImageFailed] = useState(false)
 
   if (!imageFailed) {
@@ -1773,7 +1780,7 @@ function BookCover({ book, compact = false }: { book: Book; compact?: boolean })
 }
 
 function EmptyCover() {
-  return <div className="cover-empty h-28 w-20" />
+  return <div className="cover-empty h-24 w-16" />
 }
 
 function BookShelf({
@@ -1964,10 +1971,55 @@ function Reader({
 }) {
   const [pageNumber, setPageNumber] = useState(1)
   const [page, setPage] = useState<PageText | null>(null)
+  const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(true)
+  const [pdfError, setPdfError] = useState('')
+  const [zoom, setZoom] = useState(1)
+  const [pendingHighlight, setPendingHighlight] = useState<{
+    text: string
+    locator: {
+      page_number: number
+      rects: Array<{ left: number; top: number; width: number; height: number }>
+    }
+  } | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [noteText, setNoteText] = useState('')
+
+  useEffect(() => {
+    let active = true
+    const sourceUrl = api.bookViewerUrl(book)
+    const loadingTask = getDocument(sourceUrl)
+
+    setPdfLoading(true)
+    setPdfError('')
+    setPdfDocument(null)
+    setZoom(1)
+    setPendingHighlight(null)
+
+    loadingTask.promise
+      .then((document) => {
+        if (!active) {
+          void document.destroy()
+          return
+        }
+        setPdfDocument(document)
+        setPageNumber((current) => Math.min(Math.max(current, 1), document.numPages))
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        setPdfError(error instanceof Error ? error.message : 'PDF konnte nicht geladen werden')
+      })
+      .finally(() => {
+        if (active) setPdfLoading(false)
+      })
+
+    return () => {
+      active = false
+      void loadingTask.destroy()
+    }
+  }, [book])
 
   useEffect(() => {
     api
@@ -1989,6 +2041,18 @@ function Reader({
     return highlightTerm(page.text, query)
   }, [page?.text, query])
 
+  const pageCount = pdfDocument?.numPages || book.page_count || 0
+  const currentPageHighlights = useMemo(
+    () =>
+      highlights.filter(
+        (highlight) =>
+          highlight.page_number === pageNumber &&
+          Array.isArray(highlight.locator?.rects) &&
+          (highlight.locator?.rects?.length ?? 0) > 0,
+      ),
+    [highlights, pageNumber],
+  )
+
   async function saveNote() {
     if (!noteText.trim()) return
     const note = await api.createNote(book.id, pageNumber, noteText)
@@ -2002,10 +2066,15 @@ function Reader({
   }
 
   async function saveHighlight() {
-    const selection = window.getSelection()?.toString().trim()
-    if (!selection) return
-    const highlight = await api.createHighlight(book.id, pageNumber, selection)
+    if (!pendingHighlight) return
+    const highlight = await api.createHighlightWithLocator(
+      book.id,
+      pageNumber,
+      pendingHighlight.text,
+      pendingHighlight.locator,
+    )
     setHighlights([highlight, ...highlights])
+    setPendingHighlight(null)
   }
 
   return (
@@ -2041,38 +2110,80 @@ function Reader({
                 Zurück
               </button>
               <span className="font-medium text-slate-700">
-                Seite {pageNumber} / {book.page_count || '?'}
+                Seite {pageNumber} / {pageCount || '?'}
               </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setZoom((current) => Math.max(0.75, Number((current - 0.1).toFixed(2))))}
+                  disabled={zoom <= 0.75}
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-12 text-center font-medium text-slate-700">{Math.round(zoom * 100)}%</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setZoom((current) => Math.min(2.5, Number((current + 0.1).toFixed(2))))}
+                  disabled={zoom >= 2.5}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <button
-                disabled={book.page_count > 0 && pageNumber >= book.page_count}
+                disabled={pageCount > 0 && pageNumber >= pageCount}
                 onClick={() => setPageNumber(pageNumber + 1)}
                 className="btn btn-sm btn-secondary"
               >
                 Weiter
               </button>
             </div>
-            <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-              <iframe
-                key={`${book.id}-${pageNumber}`}
-                src={api.bookFileUrl(book, pageNumber)}
-                title={`PDF-Ansicht ${book.title}`}
-                className="h-[70vh] min-h-[40rem] w-full"
-              />
+            <div className="pdf-shell">
+              {pdfLoading && <div className="pdf-status">PDF wird geladen …</div>}
+              {pdfError && !pdfLoading && <div className="pdf-status pdf-status-error">{pdfError}</div>}
+              {pdfDocument && !pdfError && (
+                <PdfCanvasViewer
+                  pdfDocument={pdfDocument}
+                  pageNumber={pageNumber}
+                  zoom={zoom}
+                  highlights={currentPageHighlights}
+                  onTextSelect={(selection) => setPendingHighlight(selection)}
+                />
+              )}
             </div>
           </div>
         </article>
         <aside className="space-y-4 p-4">
           <section>
             <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
+            <p className="mb-2 text-[11px] text-slate-500">Suche und Volltext basieren auf OCR. Markierungen kommen jetzt aus der PDF-Textauswahl links.</p>
             <div
               className="reader-text max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800"
-              onMouseUp={saveHighlight}
               dangerouslySetInnerHTML={{ __html: markedText }}
             />
           </section>
           <button className="btn btn-primary w-full" onClick={saveBookmark} type="button">
             Lesezeichen setzen
           </button>
+          <section className="rounded-md border border-amber-200 bg-amber-50 p-3">
+            <h4 className="mb-1.5 text-xs font-semibold text-slate-900">PDF-Markierung</h4>
+            {pendingHighlight ? (
+              <>
+                <p className="line-clamp-3 text-xs leading-5 text-slate-700">{pendingHighlight.text}</p>
+                <div className="mt-2 flex gap-2">
+                  <button className="btn btn-sm btn-primary" onClick={saveHighlight} type="button">
+                    Markierung speichern
+                  </button>
+                  <button className="btn btn-sm btn-secondary" onClick={() => setPendingHighlight(null)} type="button">
+                    Verwerfen
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-600">Text direkt im PDF markieren, dann hier speichern.</p>
+            )}
+          </section>
           <section>
             <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Notiz zur Seite</h4>
             <textarea
@@ -2101,9 +2212,17 @@ function Reader({
           <section>
             <h4 className="mb-1.5 text-xs font-semibold text-slate-900">Markierungen</h4>
             {highlights.map((highlight) => (
-              <p key={highlight.id} className="mb-1 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-slate-700">
+              <button
+                key={highlight.id}
+                className="mb-1 block w-full rounded-md bg-amber-50 px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-amber-100"
+                onClick={() => setPageNumber(highlight.page_number)}
+                type="button"
+              >
+                <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  Seite {highlight.page_number}
+                </span>
                 {highlight.selected_text}
-              </p>
+              </button>
             ))}
             {!highlights.length && <p className="muted">Noch keine Markierungen.</p>}
           </section>
@@ -2120,6 +2239,183 @@ function Reader({
         </aside>
       </div>
     </section>
+  )
+}
+
+function PdfCanvasViewer({
+  pdfDocument,
+  pageNumber,
+  zoom,
+  highlights,
+  onTextSelect,
+}: {
+  pdfDocument: PDFDocumentProxy
+  pageNumber: number
+  zoom: number
+  highlights: Highlight[]
+  onTextSelect: (selection: {
+    text: string
+    locator: {
+      page_number: number
+      rects: Array<{ left: number; top: number; width: number; height: number }>
+    }
+  } | null) => void
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const pageRef = useRef<HTMLDivElement | null>(null)
+  const textLayerRef = useRef<HTMLDivElement | null>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
+  const [rendering, setRendering] = useState(false)
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+
+    const updateWidth = () => setContainerWidth(wrapper.clientWidth)
+    updateWidth()
+
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(wrapper)
+
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !containerWidth) return
+
+    let active = true
+    let cancelRender: (() => void) | null = null
+    let cancelTextLayer = false
+
+    setRendering(true)
+    onTextSelect(null)
+
+    void pdfDocument.getPage(pageNumber).then((page) => {
+      if (!active) return
+
+      const baseViewport = page.getViewport({ scale: 1 })
+      const fitScale = Math.max(0.5, ((containerWidth - 32) / baseViewport.width) * zoom)
+      const viewport = page.getViewport({ scale: fitScale })
+      const pixelRatio = window.devicePixelRatio || 1
+      const context = canvas.getContext('2d')
+
+      if (!context) {
+        setRendering(false)
+        return
+      }
+
+      canvas.width = Math.floor(viewport.width * pixelRatio)
+      canvas.height = Math.floor(viewport.height * pixelRatio)
+      canvas.style.width = `${Math.floor(viewport.width)}px`
+      canvas.style.height = `${Math.floor(viewport.height)}px`
+
+      if (pageRef.current) {
+        pageRef.current.style.width = `${Math.floor(viewport.width)}px`
+        pageRef.current.style.height = `${Math.floor(viewport.height)}px`
+      }
+
+      if (textLayerRef.current) {
+        textLayerRef.current.replaceChildren()
+        textLayerRef.current.style.width = `${Math.floor(viewport.width)}px`
+        textLayerRef.current.style.height = `${Math.floor(viewport.height)}px`
+      }
+
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+      const task = page.render({ canvas, canvasContext: context, viewport })
+      cancelRender = () => task.cancel()
+      void page
+        .getTextContent({ includeMarkedContent: true, disableNormalization: true })
+        .then((textContent) => {
+          if (cancelTextLayer || !textLayerRef.current) return
+          const textLayer = new TextLayer({
+            textContentSource: textContent,
+            container: textLayerRef.current,
+            viewport,
+          })
+          return textLayer.render()
+        })
+      void task.promise.finally(() => {
+        if (active) setRendering(false)
+      })
+    })
+
+    return () => {
+      active = false
+      cancelTextLayer = true
+      cancelRender?.()
+    }
+  }, [containerWidth, onTextSelect, pageNumber, pdfDocument, zoom])
+
+  function handleMouseUp() {
+    const selection = window.getSelection()
+    const layer = textLayerRef.current
+    if (!selection || !layer || selection.rangeCount === 0 || selection.isCollapsed) {
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    if (!layer.contains(range.commonAncestorContainer)) {
+      return
+    }
+
+    const text = selection.toString().trim()
+    if (!text) {
+      selection.removeAllRanges()
+      return
+    }
+
+    const layerRect = layer.getBoundingClientRect()
+    const rects = Array.from(range.getClientRects())
+      .map((rect) => ({
+        left: (rect.left - layerRect.left) / layerRect.width,
+        top: (rect.top - layerRect.top) / layerRect.height,
+        width: rect.width / layerRect.width,
+        height: rect.height / layerRect.height,
+      }))
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+
+    if (!rects.length) {
+      selection.removeAllRanges()
+      return
+    }
+
+    onTextSelect({
+      text,
+      locator: {
+        page_number: pageNumber,
+        rects,
+      },
+    })
+    selection.removeAllRanges()
+  }
+
+  return (
+    <div ref={wrapperRef} className="pdf-canvas-wrap">
+      {rendering && <div className="pdf-rendering">Seite wird gerendert …</div>}
+      <div ref={pageRef} className="pdf-page">
+        <canvas ref={canvasRef} className="pdf-canvas" />
+        <div ref={textLayerRef} className="pdf-textLayer" onMouseUp={handleMouseUp} />
+        <div className="pdf-highlightLayer">
+          {highlights.flatMap((highlight) =>
+            (highlight.locator?.rects ?? []).map((rect, index) => (
+              <div
+                key={`${highlight.id}-${index}`}
+                className="pdf-highlightBox"
+                style={{
+                  left: `${rect.left * 100}%`,
+                  top: `${rect.top * 100}%`,
+                  width: `${rect.width * 100}%`,
+                  height: `${rect.height * 100}%`,
+                }}
+                title={highlight.selected_text}
+              />
+            )),
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
