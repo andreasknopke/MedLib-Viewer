@@ -19,9 +19,8 @@ import {
   Star,
   Users,
 } from 'lucide-react'
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
+import { GlobalWorkerOptions, TextLayer, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { TextLayer } from 'pdfjs-dist/web/pdf_viewer.mjs'
 import { api } from './api'
 import type { InspectMetadata, InspectResponse } from './api'
 import type {
