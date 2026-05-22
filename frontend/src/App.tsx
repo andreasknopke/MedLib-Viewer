@@ -3473,6 +3473,9 @@ function PdfCanvasViewer({
     const spanRect = span.getBoundingClientRect()
     if (spanRect.width <= 0 || spanRect.height <= 0) return null
 
+    const caretRect = measureTokenRectFromCarets(textNode, startOffset, endOffset, layerRect, spanRect)
+    if (caretRect) return caretRect
+
     const metrics = getTextMeasureContext()
     if (!metrics) return null
 
@@ -3492,6 +3495,38 @@ function PdfCanvasViewer({
 
     return normalizeRect(
       new DOMRect(tokenLeft, spanRect.top, Math.max(0, tokenRight - tokenLeft), spanRect.height),
+      layerRect,
+    )
+  }
+
+  function measureTokenRectFromCarets(
+    textNode: Text,
+    startOffset: number,
+    endOffset: number,
+    layerRect: DOMRect,
+    spanRect: DOMRect,
+  ) {
+    const startRange = document.createRange()
+    const endRange = document.createRange()
+    try {
+      startRange.setStart(textNode, startOffset)
+      startRange.setEnd(textNode, startOffset)
+      endRange.setStart(textNode, endOffset)
+      endRange.setEnd(textNode, endOffset)
+    } catch {
+      return null
+    }
+
+    const startRect = startRange.getBoundingClientRect()
+    const endRect = endRange.getBoundingClientRect()
+    const leftEdge = Number.isFinite(startRect.left) && startRect.width >= 0 ? startRect.left : spanRect.left
+    const rightEdge = Number.isFinite(endRect.left) && endRect.width >= 0 ? endRect.left : spanRect.right
+    const clampedLeft = Math.max(spanRect.left, Math.min(spanRect.right, leftEdge))
+    const clampedRight = Math.max(clampedLeft, Math.min(spanRect.right, rightEdge))
+    if (clampedRight - clampedLeft <= 0) return null
+
+    return normalizeRect(
+      new DOMRect(clampedLeft, spanRect.top, clampedRight - clampedLeft, spanRect.height),
       layerRect,
     )
   }
