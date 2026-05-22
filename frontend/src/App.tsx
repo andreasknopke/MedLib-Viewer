@@ -3165,6 +3165,35 @@ function Reader({
   )
 }
 
+function collapseWhitespace(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function buildNormalizedBuffer(raw: string) {
+  let out = ''
+  const map: number[] = []
+  let lastWasSpace = true
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]
+    if (/\s/.test(c)) {
+      if (!lastWasSpace) {
+        out += ' '
+        map.push(i)
+        lastWasSpace = true
+      }
+    } else {
+      out += c
+      map.push(i)
+      lastWasSpace = false
+    }
+  }
+  if (out.endsWith(' ')) {
+    out = out.slice(0, -1)
+    map.pop()
+  }
+  return { text: out, map }
+}
+
 function PdfCanvasViewer({
   pdfDocument,
   pageNumber,
@@ -3205,6 +3234,9 @@ function PdfCanvasViewer({
   const pageRef = useRef<HTMLDivElement | null>(null)
   const textLayerRef = useRef<HTMLDivElement | null>(null)
   const matchLayerRef = useRef<HTMLDivElement | null>(null)
+  const highlightLayerRef = useRef<HTMLDivElement | null>(null)
+  const highlightsRef = useRef<Highlight[]>(highlights)
+  highlightsRef.current = highlights
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
   const [rendering, setRendering] = useState(false)
 
@@ -3304,6 +3336,7 @@ function PdfCanvasViewer({
           return textLayer.render().then(() => {
             if (cancelTextLayer) return
             paintMatches()
+            paintHighlights()
           })
         })
       void task.promise.finally(() => {
@@ -3372,6 +3405,112 @@ function PdfCanvasViewer({
           }
         }
         node = walker.nextNode()
+      }
+    })
+  }
+
+  function paintHighlights() {
+    const layer = textLayerRef.current
+    const highlightLayer = highlightLayerRef.current
+    if (!layer || !highlightLayer) return
+    highlightLayer.replaceChildren()
+    const items = highlightsRef.current
+    if (!items.length) return
+
+    requestAnimationFrame(() => {
+      const layerRect = layer.getBoundingClientRect()
+      if (layerRect.width <= 0 || layerRect.height <= 0) return
+
+      const textNodes: { node: Text; start: number; end: number }[] = []
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+      let raw = ''
+      let n = walker.nextNode()
+      while (n) {
+        const t = n as Text
+        const value = t.nodeValue ?? ''
+        textNodes.push({ node: t, start: raw.length, end: raw.length + value.length })
+        raw += value
+        n = walker.nextNode()
+      }
+      if (!raw.length) return
+
+      const norm = buildNormalizedBuffer(raw)
+      const haystack = norm.text.toLowerCase()
+
+      const locate = (rawOffset: number) => {
+        for (const entry of textNodes) {
+          if (rawOffset >= entry.start && rawOffset <= entry.end) {
+            return { entry, offset: rawOffset - entry.start }
+          }
+        }
+        return null
+      }
+
+      for (const highlight of items) {
+        const needle = collapseWhitespace(highlight.selected_text ?? '').toLowerCase()
+        if (!needle) continue
+        const idx = haystack.indexOf(needle)
+        if (idx < 0) continue
+        const rawStart = norm.map[idx]
+        const rawEnd = norm.map[idx + needle.length - 1] + 1
+        const startInfo = locate(rawStart)
+        const endInfo = locate(rawEnd)
+        if (!startInfo || !endInfo) continue
+        const startIdx = textNodes.indexOf(startInfo.entry)
+        const endIdx = textNodes.indexOf(endInfo.entry)
+
+        const rawRects: DOMRect[] = []
+        for (let i = startIdx; i <= endIdx; i++) {
+          const entry = textNodes[i]
+          const value = entry.node.nodeValue ?? ''
+          const s = i === startIdx ? startInfo.offset : 0
+          const e = i === endIdx ? endInfo.offset : value.length
+          if (e <= s) continue
+          const slice = value.slice(s, e)
+          const m = slice.match(/^(\s*)(.*?)(\s*)$/)
+          const ts = s + (m?.[1].length ?? 0)
+          const te = e - (m?.[3].length ?? 0)
+          if (te <= ts) continue
+          const sub = document.createRange()
+          try {
+            sub.setStart(entry.node, ts)
+            sub.setEnd(entry.node, te)
+            for (const r of Array.from(sub.getClientRects())) {
+              if (r.width > 0.5 && r.height > 1) rawRects.push(r)
+            }
+          } catch {
+            // ignore
+          }
+        }
+        if (!rawRects.length) continue
+
+        const heights = rawRects.map((r) => r.height).sort((a, b) => a - b)
+        const median = heights[Math.floor(heights.length / 2)] || 0
+        const tol = median * 0.6
+        const buckets: { top: number; bottom: number; left: number; right: number }[] = []
+        for (const r of [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left)) {
+          const center = r.top + r.height / 2
+          const target = buckets.find((b) => Math.abs((b.top + b.bottom) / 2 - center) <= tol)
+          if (target) {
+            target.top = Math.min(target.top, r.top)
+            target.bottom = Math.max(target.bottom, r.bottom)
+            target.left = Math.min(target.left, r.left)
+            target.right = Math.max(target.right, r.right)
+          } else {
+            buckets.push({ top: r.top, bottom: r.bottom, left: r.left, right: r.right })
+          }
+        }
+
+        for (const b of buckets) {
+          const box = document.createElement('div')
+          box.className = 'pdf-highlightBox'
+          box.title = highlight.selected_text
+          box.style.left = `${((b.left - layerRect.left) / layerRect.width) * 100}%`
+          box.style.top = `${((b.top - layerRect.top) / layerRect.height) * 100}%`
+          box.style.width = `${((b.right - b.left) / layerRect.width) * 100}%`
+          box.style.height = `${((b.bottom - b.top) / layerRect.height) * 100}%`
+          highlightLayer.appendChild(box)
+        }
       }
     })
   }
@@ -3513,6 +3652,11 @@ function PdfCanvasViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchTerm])
 
+  useEffect(() => {
+    paintHighlights()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlights])
+
   function handleAreaMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
     if (!allowAreaSelect) return
     if (event.button !== 0) return
@@ -3604,23 +3748,7 @@ function PdfCanvasViewer({
             )}
           </div>
         )}
-        <div className="pdf-highlightLayer">
-          {highlights.flatMap((highlight) =>
-            (highlight.locator?.rects ?? []).map((rect, index) => (
-              <div
-                key={`${highlight.id}-${index}`}
-                className="pdf-highlightBox"
-                style={{
-                  left: `${rect.left * 100}%`,
-                  top: `${rect.top * 100}%`,
-                  width: `${rect.width * 100}%`,
-                  height: `${rect.height * 100}%`,
-                }}
-                title={highlight.selected_text}
-              />
-            )),
-          )}
-        </div>
+        <div ref={highlightLayerRef} className="pdf-highlightLayer" />
       </div>
     </div>
   )
