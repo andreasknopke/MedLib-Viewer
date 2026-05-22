@@ -4250,7 +4250,7 @@ function PdfCanvasViewer({
           continue
         }
 
-        for (const b of mergeClientRects(rawRects)) {
+        for (const b of compactClientRects(rawRects)) {
           appendNormalizedBox(
             {
               left: (b.left - layerRect.left) / layerRect.width,
@@ -4348,7 +4348,7 @@ function PdfCanvasViewer({
     if (!rawRects.length) return []
 
     const result: Array<{ left: number; top: number; width: number; height: number }> = []
-    for (const bucket of mergeClientRects(rawRects)) {
+    for (const bucket of compactClientRects(rawRects)) {
       const normalized = normalizeRect(
         new DOMRect(bucket.left, bucket.top, bucket.right - bucket.left, bucket.bottom - bucket.top),
         layerRect,
@@ -4381,54 +4381,39 @@ function PdfCanvasViewer({
     return new DOMRect(left, top, width, height)
   }
 
-  function mergeClientRects(rawRects: DOMRect[]) {
+  function compactClientRects(rawRects: DOMRect[]) {
     if (!rawRects.length) return []
 
-    const heights = rawRects.map((rect) => rect.height).sort((a, b) => a - b)
-    const medianHeight = heights[Math.floor(heights.length / 2)] || 0
-    const lineTolerance = Math.max(1, medianHeight * 0.6)
-    const gapTolerance = Math.max(2, medianHeight * 0.75)
+    type Box = { top: number; bottom: number; left: number; right: number }
+    const deduped: Box[] = []
 
-    type Segment = { top: number; bottom: number; left: number; right: number }
-    type LineGroup = { top: number; bottom: number; segments: Segment[] }
-    const lines: LineGroup[] = []
+    const sorted = [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left || a.width - b.width)
+    for (const rect of sorted) {
+      const candidate: Box = { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
 
-    for (const rect of [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left)) {
-      const center = rect.top + rect.height / 2
-      let line = lines.find((entry) => Math.abs((entry.top + entry.bottom) / 2 - center) <= lineTolerance)
-      if (!line) {
-        line = { top: rect.top, bottom: rect.bottom, segments: [] }
-        lines.push(line)
-      } else {
-        line.top = Math.min(line.top, rect.top)
-        line.bottom = Math.max(line.bottom, rect.bottom)
+      const contained = deduped.some(
+        (box) =>
+          candidate.left >= box.left - 0.5 &&
+          candidate.right <= box.right + 0.5 &&
+          candidate.top >= box.top - 0.5 &&
+          candidate.bottom <= box.bottom + 0.5,
+      )
+      if (contained) continue
+
+      for (let index = deduped.length - 1; index >= 0; index -= 1) {
+        const box = deduped[index]
+        const boxContained =
+          box.left >= candidate.left - 0.5 &&
+          box.right <= candidate.right + 0.5 &&
+          box.top >= candidate.top - 0.5 &&
+          box.bottom <= candidate.bottom + 0.5
+        if (boxContained) deduped.splice(index, 1)
       }
 
-      const overlapping = line.segments.filter(
-        (segment) => rect.left <= segment.right + gapTolerance && rect.right >= segment.left - gapTolerance,
-      )
-      if (!overlapping.length) {
-        line.segments.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
-        continue
-      }
-
-      const merged = overlapping.reduce<Segment>(
-        (segment, current) => ({
-          top: Math.min(segment.top, current.top),
-          bottom: Math.max(segment.bottom, current.bottom),
-          left: Math.min(segment.left, current.left),
-          right: Math.max(segment.right, current.right),
-        }),
-        { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-      )
-
-      line.segments = line.segments.filter((segment) => !overlapping.includes(segment))
-      line.segments.push(merged)
+      deduped.push(candidate)
     }
 
-    return lines
-      .sort((a, b) => a.top - b.top)
-      .flatMap((line) => line.segments.sort((a, b) => a.left - b.left))
+    return deduped
   }
 
   const [areaRect, setAreaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
