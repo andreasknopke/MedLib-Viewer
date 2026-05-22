@@ -30,7 +30,6 @@ import {
   X,
 } from 'lucide-react'
 import { GlobalWorkerOptions, TextLayer, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { api, type SearchScope } from './api'
 import type { InspectMetadata, InspectResponse } from './api'
 import type {
@@ -52,7 +51,9 @@ import type {
   UserWorkspace,
 } from './types'
 
-GlobalWorkerOptions.workerSrc = pdfWorker
+GlobalWorkerOptions.workerPort = new Worker(new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url), {
+  type: 'module',
+})
 
 type ViewKey = 'library' | 'search' | 'reader' | 'admin' | 'users'
 
@@ -95,13 +96,15 @@ function App() {
   const [error, setError] = useState('')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
+  async function hydrateAuthenticatedApp(nextUser: User) {
+    setUser(nextUser)
+    await Promise.all([loadBooks(), loadWorkspace(), loadTaxonomy(), loadDashboard()])
+  }
+
   useEffect(() => {
     api
       .me()
-      .then((loadedUser) => {
-        setUser(loadedUser)
-        return Promise.all([loadBooks(), loadWorkspace(), loadTaxonomy(), loadDashboard()])
-      })
+      .then(hydrateAuthenticatedApp)
       .catch(() => undefined)
   }, [])
 
@@ -189,7 +192,7 @@ function App() {
   }
 
   if (!user) {
-    return <Login onLogin={setUser} error={error} setError={setError} />
+    return <Login onLogin={hydrateAuthenticatedApp} error={error} setError={setError} />
   }
 
   const canAdmin = user.role === 'admin' || user.role === 'librarian'
@@ -1527,7 +1530,7 @@ function Login({
   error,
   setError,
 }: {
-  onLogin: (user: User) => void
+  onLogin: (user: User) => Promise<void>
   error: string
   setError: (value: string) => void
 }) {
@@ -1536,8 +1539,9 @@ function Login({
 
   async function submit() {
     try {
+      setError('')
       await api.login(email, password)
-      onLogin(await api.me())
+      await onLogin(await api.me())
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Login fehlgeschlagen')
     }
@@ -1576,7 +1580,7 @@ function Login({
           </div>
         </div>
 
-        <div className="login-card mx-auto w-full max-w-md">
+        <div className="login-card mx-auto">
           <div className="mb-5 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-600 text-white">
               <ShieldCheck className="h-4 w-4" />

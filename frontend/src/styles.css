@@ -401,6 +401,7 @@ button:disabled {
   background: #ffffff;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   padding: 1.75rem;
+  width: min(100%, 28rem);
 }
 
 @media (min-width: 640px) {
