@@ -526,11 +526,13 @@ async def ocr_region(
             return ""
         image = images[0]
         w, h = image.size
+        pad_x = max(12, int(w * 0.008))
+        pad_y = max(12, int(h * 0.006))
         box = (
-            int(left * w),
-            int(top * h),
-            int((left + width) * w),
-            int((top + height) * h),
+            max(0, int(left * w) - pad_x),
+            max(0, int(top * h) - pad_y),
+            min(w, int((left + width) * w) + pad_x),
+            min(h, int((top + height) * h) + pad_y),
         )
         # Guard against degenerate crops
         if box[2] - box[0] < 4 or box[3] - box[1] < 4:
