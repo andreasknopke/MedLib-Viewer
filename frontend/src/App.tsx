@@ -708,7 +708,7 @@ function DashboardView({
   }
 
   async function openHighlight(highlight: { book_id: string; page_number: number; selected_text: string }) {
-    await onOpenBookById(highlight.book_id, highlight.page_number, highlight.selected_text)
+    await onOpenBookById(highlight.book_id, highlight.page_number)
   }
 
   async function openNote(note: { book_id: string; page_number?: number | null }) {
