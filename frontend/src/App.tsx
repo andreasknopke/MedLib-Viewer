@@ -98,6 +98,7 @@ function App() {
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null)
   const [error, setError] = useState('')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [readerReturnView, setReaderReturnView] = useState<ViewKey>('library')
 
   async function hydrateAuthenticatedApp(nextUser: User) {
     setUser(nextUser)
@@ -188,10 +189,20 @@ function App() {
   const [readerInitialTerm, setReaderInitialTerm] = useState<string>('')
 
   function openBook(book: Book, pageNumber?: number, highlightTerm?: string) {
+    if (view !== 'reader') setReaderReturnView(view)
     setSelectedBook(book)
     setReaderInitialPage(pageNumber)
     setReaderInitialTerm(highlightTerm ?? '')
     setView('reader')
+  }
+
+  async function openBookById(bookId: string, pageNumber?: number, highlightTerm?: string) {
+    const cachedBook =
+      selectedBook?.id === bookId
+        ? selectedBook
+        : workspace?.saved_media.find((entry) => entry.book.id === bookId)?.book ?? books.find((entry) => entry.id === bookId) ?? null
+    const book = cachedBook ?? (await api.book(bookId))
+    openBook(book, pageNumber, highlightTerm)
   }
 
   if (!user) {
@@ -248,6 +259,7 @@ function App() {
               <DashboardView
                 workspace={workspace}
                 onOpenBook={openBook}
+                onOpenBookById={openBookById}
                 onChanged={loadWorkspace}
               />
             )}
@@ -294,9 +306,10 @@ function App() {
                   setSelectedBook(null)
                   setReaderInitialPage(undefined)
                   setReaderInitialTerm('')
-                  setView(searchHits.length > 0 ? 'search' : 'library')
+                  setView(readerReturnView)
                 }}
                 onSave={saveToWorkspace}
+                onWorkspaceChanged={loadWorkspace}
               />
             )}
 
@@ -670,20 +683,17 @@ function WorkspaceSection({
 function DashboardView({
   workspace,
   onOpenBook,
+  onOpenBookById,
   onChanged,
 }: {
   workspace: UserWorkspace | null
   onOpenBook: (book: Book, pageNumber?: number, highlightTerm?: string) => void
+  onOpenBookById: (bookId: string, pageNumber?: number, highlightTerm?: string) => Promise<void>
   onChanged: () => Promise<void>
 }) {
   const savedMedia = workspace?.saved_media ?? []
   const highlights = workspace?.highlights ?? []
   const notes = workspace?.notes ?? []
-
-  function bookFromHighlight(highlightBookId: string): Book | null {
-    const saved = savedMedia.find((entry) => entry.book.id === highlightBookId)
-    return saved?.book ?? null
-  }
 
   async function removeHighlight(id: string) {
     if (!confirm('Highlight wirklich löschen?')) return
@@ -697,16 +707,12 @@ function DashboardView({
     await onChanged()
   }
 
-  function openHighlight(highlight: { book_id: string; page_number: number; selected_text: string }) {
-    const book = bookFromHighlight(highlight.book_id)
-    if (!book) return
-    onOpenBook(book, highlight.page_number, highlight.selected_text)
+  async function openHighlight(highlight: { book_id: string; page_number: number; selected_text: string }) {
+    await onOpenBookById(highlight.book_id, highlight.page_number, highlight.selected_text)
   }
 
-  function openNote(note: { book_id: string; page_number?: number | null }) {
-    const saved = savedMedia.find((entry) => entry.book.id === note.book_id)
-    if (!saved) return
-    onOpenBook(saved.book, note.page_number ?? undefined)
+  async function openNote(note: { book_id: string; page_number?: number | null }) {
+    await onOpenBookById(note.book_id, note.page_number ?? undefined)
   }
 
   return (
@@ -761,7 +767,6 @@ function DashboardView({
           ) : (
             <ul className="space-y-2">
               {highlights.map((highlight) => {
-                const canOpen = bookFromHighlight(highlight.book_id) !== null
                 return (
                   <li
                     key={highlight.id}
@@ -778,15 +783,13 @@ function DashboardView({
                       </p>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-1">
-                      {canOpen && (
-                        <button
-                          type="button"
-                          onClick={() => openHighlight(highlight)}
-                          className="btn btn-sm btn-secondary"
-                        >
-                          Öffnen
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => void openHighlight(highlight)}
+                        className="btn btn-sm btn-secondary"
+                      >
+                        Öffnen
+                      </button>
                       <button
                         type="button"
                         onClick={() => void removeHighlight(highlight.id)}
@@ -817,7 +820,6 @@ function DashboardView({
           ) : (
             <ul className="space-y-2">
               {notes.map((note) => {
-                const canOpen = savedMedia.some((entry) => entry.book.id === note.book_id)
                 return (
                   <li
                     key={note.id}
@@ -831,15 +833,13 @@ function DashboardView({
                       </p>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-1">
-                      {canOpen && (
-                        <button
-                          type="button"
-                          onClick={() => openNote(note)}
-                          className="btn btn-sm btn-secondary"
-                        >
-                          Öffnen
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => void openNote(note)}
+                        className="btn btn-sm btn-secondary"
+                      >
+                        Öffnen
+                      </button>
                       <button
                         type="button"
                         onClick={() => void removeNote(note.id)}
@@ -3318,6 +3318,7 @@ function Reader({
   initialTerm,
   onBack,
   onSave,
+  onWorkspaceChanged,
 }: {
   book: Book
   query: string
@@ -3325,6 +3326,7 @@ function Reader({
   initialTerm?: string
   onBack: () => void
   onSave: (book: Book) => Promise<void>
+  onWorkspaceChanged: () => Promise<void>
 }) {
   const [pageNumber, setPageNumber] = useState(initialPage ?? 1)
   const [page, setPage] = useState<PageText | null>(null)
@@ -3494,11 +3496,13 @@ function Reader({
     const note = await api.createNote(book.id, pageNumber, noteText)
     setNotes([note, ...notes])
     setNoteText('')
+    await onWorkspaceChanged()
   }
 
   async function saveBookmark() {
     const bookmark = await api.createBookmark(book.id, pageNumber, `Seite ${pageNumber}`)
     setBookmarks([...bookmarks, bookmark])
+    await onWorkspaceChanged()
   }
 
   async function saveHighlight() {
@@ -3514,6 +3518,7 @@ function Reader({
     setHighlights([highlight, ...highlights])
     setPendingHighlight(null)
     setOcrRunning(false)
+    await onWorkspaceChanged()
   }
 
   async function handleSelection(
@@ -3857,6 +3862,7 @@ function Reader({
                     onClick={async () => {
                       await api.deleteHighlight(highlight.id)
                       setHighlights((current) => current.filter((h) => h.id !== highlight.id))
+                      await onWorkspaceChanged()
                     }}
                     type="button"
                   >

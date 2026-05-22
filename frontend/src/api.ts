@@ -214,6 +214,10 @@ export class ApiClient {
     return this.request<Book[]>(`/api/books${qs ? `?${qs}` : ''}`)
   }
 
+  book(bookId: string) {
+    return this.request<Book>(`/api/books/${bookId}`)
+  }
+
   search(query: string, scope?: SearchScope) {
     const params = new URLSearchParams({ q: query })
     if (scope?.clinicId) params.set('clinic_id', scope.clinicId)
