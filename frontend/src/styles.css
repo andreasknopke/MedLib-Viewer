@@ -786,6 +786,7 @@ button:disabled {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-height: 2.5em;
 }
 .book-tile-author {
   font-size: 0.72rem;

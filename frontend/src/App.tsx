@@ -1740,8 +1740,8 @@ function BookTile({
         <BookCover book={book} size="md" />
       </button>
       <div className="book-tile-meta">
-        <button type="button" className="text-left" onClick={onOpen}>
-          <h4 className="line-clamp-2 text-[13px] font-semibold leading-tight text-slate-900 hover:text-indigo-700">
+        <button type="button" className="block w-full text-left" onClick={onOpen}>
+          <h4 className="book-tile-title line-clamp-2 text-[13px] font-semibold leading-tight text-slate-900 hover:text-indigo-700">
             {book.title}
           </h4>
         </button>
