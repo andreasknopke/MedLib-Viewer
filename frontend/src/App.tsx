@@ -3396,14 +3396,7 @@ function PdfCanvasViewer({
     const layerRect = layer.getBoundingClientRect()
     if (layerRect.width <= 0 || layerRect.height <= 0) return
 
-    const rects = Array.from(range.getClientRects())
-      .map((rect) => ({
-        left: (rect.left - layerRect.left) / layerRect.width,
-        top: (rect.top - layerRect.top) / layerRect.height,
-        width: rect.width / layerRect.width,
-        height: rect.height / layerRect.height,
-      }))
-      .filter((rect) => rect.width > 0 && rect.height > 0)
+    const rects = collectSelectionRects(range, layer, layerRect)
 
     if (!rects.length) {
       return
@@ -3416,6 +3409,104 @@ function PdfCanvasViewer({
         rects,
       },
     })
+  }
+
+  function collectSelectionRects(range: Range, layer: HTMLDivElement, layerRect: DOMRect) {
+    const rawRects: Array<{ left: number; top: number; width: number; height: number }> = []
+    const textNodes = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+    let node = textNodes.nextNode()
+
+    while (node) {
+      const textNode = node as Text
+      const value = textNode.nodeValue ?? ''
+      if (value) {
+        let intersects = false
+        try {
+          intersects = range.intersectsNode(textNode)
+        } catch {
+          intersects = false
+        }
+
+        if (intersects) {
+          const startOffset = textNode === range.startContainer ? range.startOffset : 0
+          const endOffset = textNode === range.endContainer ? range.endOffset : value.length
+          if (endOffset > startOffset) {
+            const selectedText = value.slice(startOffset, endOffset)
+            const tokenPattern = /\S+/g
+            let match: RegExpExecArray | null
+            while ((match = tokenPattern.exec(selectedText)) !== null) {
+              const tokenRange = document.createRange()
+              try {
+                tokenRange.setStart(textNode, startOffset + match.index)
+                tokenRange.setEnd(textNode, startOffset + match.index + match[0].length)
+              } catch {
+                continue
+              }
+
+              for (const clientRect of Array.from(tokenRange.getClientRects())) {
+                const normalized = normalizeRect(clientRect, layerRect)
+                if (normalized) rawRects.push(normalized)
+              }
+            }
+          }
+        }
+      }
+      node = textNodes.nextNode()
+    }
+
+    return mergeAdjacentRects(rawRects)
+  }
+
+  function normalizeRect(clientRect: DOMRect, layerRect: DOMRect) {
+    if (clientRect.width <= 0 || clientRect.height <= 0) return null
+    const left = Math.max(0, (clientRect.left - layerRect.left) / layerRect.width)
+    const top = Math.max(0, (clientRect.top - layerRect.top) / layerRect.height)
+    const right = Math.min(1, (clientRect.right - layerRect.left) / layerRect.width)
+    const bottom = Math.min(1, (clientRect.bottom - layerRect.top) / layerRect.height)
+    const width = right - left
+    const height = bottom - top
+    if (width <= 0 || height <= 0) return null
+    return { left, top, width, height }
+  }
+
+  function mergeAdjacentRects(rects: Array<{ left: number; top: number; width: number; height: number }>) {
+    if (!rects.length) return rects
+    const sorted = [...rects].sort((a, b) => {
+      if (Math.abs(a.top - b.top) > 0.002) return a.top - b.top
+      return a.left - b.left
+    })
+
+    const merged: Array<{ left: number; top: number; width: number; height: number }> = []
+    for (const rect of sorted) {
+      const previous = merged[merged.length - 1]
+      if (!previous) {
+        merged.push(rect)
+        continue
+      }
+
+      const previousBottom = previous.top + previous.height
+      const rectBottom = rect.top + rect.height
+      const sameLine = Math.abs(previous.top - rect.top) <= Math.max(previous.height, rect.height) * 0.35
+        && Math.abs(previousBottom - rectBottom) <= Math.max(previous.height, rect.height) * 0.45
+      const horizontalGap = rect.left - (previous.left + previous.width)
+
+      if (sameLine && horizontalGap <= Math.max(previous.height, rect.height) * 0.8) {
+        const nextRight = Math.max(previous.left + previous.width, rect.left + rect.width)
+        previous.left = Math.min(previous.left, rect.left)
+        previous.top = Math.min(previous.top, rect.top)
+        previous.height = Math.max(previousBottom, rectBottom) - previous.top
+        previous.width = nextRight - previous.left
+      } else {
+        merged.push(rect)
+      }
+    }
+
+    return merged.map((rect) => ({
+      left: Math.max(0, Math.min(1, rect.left)),
+      top: Math.max(0, Math.min(1, rect.top)),
+      width: Math.max(0, Math.min(1 - rect.left, rect.width)),
+      height: Math.max(0, Math.min(1 - rect.top, rect.height)),
+    }))
   }
 
   const [areaRect, setAreaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)

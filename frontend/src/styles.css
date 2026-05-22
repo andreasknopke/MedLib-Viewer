@@ -439,6 +439,7 @@ button:disabled {
 .pdf-page {
   position: relative;
   flex: 0 0 auto;
+  overflow: hidden;
 }
 
 .pdf-canvas {
