@@ -601,15 +601,9 @@ button:disabled {
 /* ============================== App shell (CuraFlow-style) ============================== */
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 1fr;
+  position: relative;
   min-height: 100vh;
   background: #f8fafc;
-}
-@media (min-width: 1024px) {
-  .app-shell {
-    grid-template-columns: 16rem minmax(0, 1fr);
-  }
 }
 
 .app-sidebar {
@@ -632,11 +626,13 @@ button:disabled {
 }
 @media (min-width: 1024px) {
   .app-sidebar {
-    position: sticky;
-    transform: none;
-    box-shadow: none;
     height: 100vh;
     top: 0;
+    transform: translateX(-100%);
+    box-shadow: 0 10px 30px -16px rgba(15, 23, 42, 0.25);
+  }
+  .app-sidebar.app-sidebar-open {
+    transform: translateX(0);
   }
 }
 
@@ -657,6 +653,12 @@ button:disabled {
   flex-direction: column;
   min-height: 100vh;
   min-width: 0;
+  transition: padding-left 200ms ease;
+}
+@media (min-width: 1024px) {
+  .app-main.app-main-with-sidebar {
+    padding-left: 16rem;
+  }
 }
 
 .app-topbar {

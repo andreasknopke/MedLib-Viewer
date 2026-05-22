@@ -97,7 +97,10 @@ function App() {
   const [dashboard, setDashboard] = useState<DashboardOverview | null>(null)
   const [workspace, setWorkspace] = useState<UserWorkspace | null>(null)
   const [error, setError] = useState('')
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false)
+  const [isDesktopSidebar, setIsDesktopSidebar] = useState(false)
+  const sidebarHideTimerRef = useRef<number | null>(null)
   const [readerReturnView, setReaderReturnView] = useState<ViewKey>('library')
 
   async function hydrateAuthenticatedApp(nextUser: User) {
@@ -113,8 +116,56 @@ function App() {
   }, [])
 
   useEffect(() => {
-    setMobileNavOpen(false)
-  }, [view, selectedBook?.id])
+    setIsSidebarHovered(false)
+    if (!isDesktopSidebar) setIsSidebarOpen(false)
+  }, [view, selectedBook?.id, isDesktopSidebar])
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)')
+    const update = () => {
+      const desktop = mediaQuery.matches
+      setIsDesktopSidebar(desktop)
+      setIsSidebarOpen((current) => (desktop ? current : false))
+      if (!desktop) setIsSidebarHovered(false)
+    }
+    update()
+    mediaQuery.addEventListener('change', update)
+    return () => mediaQuery.removeEventListener('change', update)
+  }, [])
+
+  function clearSidebarHideTimer() {
+    if (sidebarHideTimerRef.current !== null) {
+      window.clearTimeout(sidebarHideTimerRef.current)
+      sidebarHideTimerRef.current = null
+    }
+  }
+
+  function openSidebar() {
+    clearSidebarHideTimer()
+    setIsSidebarOpen(true)
+  }
+
+  function closeSidebar() {
+    clearSidebarHideTimer()
+    setIsSidebarHovered(false)
+    setIsSidebarOpen(false)
+  }
+
+  useEffect(() => {
+    if (!isDesktopSidebar || !isSidebarOpen || isSidebarHovered) {
+      clearSidebarHideTimer()
+      return
+    }
+
+    sidebarHideTimerRef.current = window.setTimeout(() => {
+      setIsSidebarOpen(false)
+      sidebarHideTimerRef.current = null
+    }, 3000)
+
+    return () => clearSidebarHideTimer()
+  }, [isDesktopSidebar, isSidebarHovered, isSidebarOpen, view])
+
+  useEffect(() => clearSidebarHideTimer, [])
 
   async function loadBooks(currentScope: SearchScope = scope) {
     setBooks(await api.books('', currentScope))
@@ -215,11 +266,10 @@ function App() {
 
   return (
     <div className="app-shell">
-      {/* Mobile overlay */}
-      {mobileNavOpen && (
+      {!isDesktopSidebar && isSidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
-          onClick={() => setMobileNavOpen(false)}
+          className="app-sidebar-backdrop"
+          onClick={closeSidebar}
         />
       )}
 
@@ -227,11 +277,18 @@ function App() {
         user={user}
         view={view}
         items={availableNav}
-        mobileOpen={mobileNavOpen}
-        onClose={() => setMobileNavOpen(false)}
+        isOpen={isSidebarOpen}
+        isDesktop={isDesktopSidebar}
+        onClose={closeSidebar}
+        onMouseEnter={() => {
+          clearSidebarHideTimer()
+          setIsSidebarHovered(true)
+        }}
+        onMouseLeave={() => setIsSidebarHovered(false)}
         onNavigate={(key) => {
           setView(key)
           setSelectedBook(null)
+          if (!isDesktopSidebar) closeSidebar()
         }}
         onLogout={() => {
           api.logout()
@@ -239,7 +296,7 @@ function App() {
         }}
       />
 
-      <div className="app-main">
+      <div className={`app-main ${isDesktopSidebar && isSidebarOpen ? 'app-main-with-sidebar' : ''}`}>
         <TopBar
           title={currentNav?.label ?? ''}
           subtitle={currentNav?.description ?? ''}
@@ -250,7 +307,9 @@ function App() {
           taxonomy={taxonomy}
           onScopeChange={(next) => void changeScope(next)}
           searching={searching}
-          onOpenNav={() => setMobileNavOpen(true)}
+          navOpen={isSidebarOpen}
+          isDesktop={isDesktopSidebar}
+          onOpenNav={openSidebar}
         />
 
         <main className="app-content">
@@ -339,23 +398,31 @@ function Sidebar({
   user,
   view,
   items,
-  mobileOpen,
+  isOpen,
+  isDesktop,
   onClose,
+  onMouseEnter,
+  onMouseLeave,
   onNavigate,
   onLogout,
 }: {
   user: User
   view: ViewKey
   items: NavEntry[]
-  mobileOpen: boolean
+  isOpen: boolean
+  isDesktop: boolean
   onClose: () => void
+  onMouseEnter: () => void
+  onMouseLeave: () => void
   onNavigate: (key: ViewKey) => void
   onLogout: () => void
 }) {
   return (
     <aside
-      className={`app-sidebar ${mobileOpen ? 'app-sidebar-open' : ''}`}
+      className={`app-sidebar ${isOpen ? 'app-sidebar-open' : ''}`}
       aria-label="Hauptnavigation"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5">
         <div className="flex items-center gap-2">
@@ -369,11 +436,12 @@ function Sidebar({
         </div>
         <button
           type="button"
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
+          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
           onClick={onClose}
-          aria-label="Menü schließen"
+          aria-label={isDesktop ? 'Seitenleiste einklappen' : 'Menü schließen'}
+          title={isDesktop ? 'Seitenleiste einklappen' : 'Menü schließen'}
         >
-          <X className="h-4 w-4" />
+          {isDesktop ? <ChevronLeft className="h-4 w-4" /> : <X className="h-4 w-4" />}
         </button>
       </div>
 
@@ -419,6 +487,8 @@ function TopBar({
   taxonomy,
   onScopeChange,
   searching,
+  navOpen,
+  isDesktop,
   onOpenNav,
 }: {
   title: string
@@ -430,6 +500,8 @@ function TopBar({
   taxonomy: TaxonomyData
   onScopeChange: (next: SearchScope) => void
   searching: boolean
+  navOpen: boolean
+  isDesktop: boolean
   onOpenNav: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -438,14 +510,17 @@ function TopBar({
   return (
     <header className="app-topbar">
       <div className="mx-auto flex w-full max-w-screen-2xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-5 lg:px-8">
-        <button
-          type="button"
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
-          onClick={onOpenNav}
-          aria-label="Menü öffnen"
-        >
-          <Menu className="h-4 w-4" />
-        </button>
+        {(!isDesktop || !navOpen) && (
+          <button
+            type="button"
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+            onClick={onOpenNav}
+            aria-label="Menü öffnen"
+            title="Menü öffnen"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+        )}
 
         <div className="hidden min-w-0 lg:block">
           <h1 className="truncate text-sm font-semibold text-slate-900">{title}</h1>
