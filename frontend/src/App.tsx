@@ -3339,6 +3339,7 @@ function Reader({
   const [layout, setLayout] = useState<PageLayout>('single')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false)
   const [hasEmbeddedText, setHasEmbeddedText] = useState(false)
   const [matchTerm, setMatchTerm] = useState<string>(initialTerm ?? '')
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -3355,6 +3356,25 @@ function Reader({
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [noteText, setNoteText] = useState('')
+  const sidebarHideTimerRef = useRef<number | null>(null)
+
+  function clearSidebarHideTimer() {
+    if (sidebarHideTimerRef.current !== null) {
+      window.clearTimeout(sidebarHideTimerRef.current)
+      sidebarHideTimerRef.current = null
+    }
+  }
+
+  function openSidebar() {
+    clearSidebarHideTimer()
+    setShowSidebar(true)
+  }
+
+  function closeSidebar() {
+    clearSidebarHideTimer()
+    setIsSidebarHovered(false)
+    setShowSidebar(false)
+  }
 
   useEffect(() => {
     let active = true
@@ -3439,6 +3459,22 @@ function Reader({
   useEffect(() => {
     setMatchTerm(initialTerm ?? '')
   }, [initialTerm])
+
+  useEffect(() => {
+    if (isFullscreen || !showSidebar || isSidebarHovered) {
+      clearSidebarHideTimer()
+      return
+    }
+
+    sidebarHideTimerRef.current = window.setTimeout(() => {
+      setShowSidebar(false)
+      sidebarHideTimerRef.current = null
+    }, 3000)
+
+    return () => clearSidebarHideTimer()
+  }, [isFullscreen, isSidebarHovered, pageNumber, showSidebar])
+
+  useEffect(() => clearSidebarHideTimer, [])
 
   useEffect(() => {
     function onFsChange() {
@@ -3706,8 +3742,15 @@ function Reader({
             <button
               className="btn btn-sm btn-ghost"
               type="button"
-              onClick={() => setShowSidebar((value) => !value)}
+              onClick={() => {
+                if (showSidebar) {
+                  closeSidebar()
+                } else {
+                  openSidebar()
+                }
+              }}
               title={showSidebar ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
+              aria-label={showSidebar ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
             >
               {showSidebar ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
             </button>
@@ -3762,7 +3805,16 @@ function Reader({
         </div>
 
         {showSidebar && !isFullscreen && (
-          <aside className="reader-sidebar">
+          <aside
+            className="reader-sidebar"
+            onMouseEnter={() => {
+              clearSidebarHideTimer()
+              setIsSidebarHovered(true)
+            }}
+            onMouseLeave={() => {
+              setIsSidebarHovered(false)
+            }}
+          >
             {!hasEmbeddedText && (
               <section>
                 <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
