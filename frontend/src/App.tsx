@@ -3685,7 +3685,6 @@ function Reader({
   const fitButtons: { mode: FitMode; label: string; icon: typeof Maximize2; title: string }[] = [
     { mode: 'width', label: 'Breite', icon: Rows2, title: 'An Breite anpassen' },
     { mode: 'page', label: 'Seite', icon: Square, title: 'Ganze Seite' },
-    { mode: 'height', label: 'Höhe', icon: Columns2, title: 'An Höhe anpassen' },
     { mode: 'actual', label: '100 %', icon: Maximize2, title: 'Originalgröße' },
   ]
 
