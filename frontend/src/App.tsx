@@ -3435,10 +3435,18 @@ function PdfCanvasViewer({
             const tokenPattern = /\S+/g
             let match: RegExpExecArray | null
             while ((match = tokenPattern.exec(selectedText)) !== null) {
+              const tokenStart = startOffset + match.index
+              const tokenEnd = tokenStart + match[0].length
+              const rect = measureTokenRect(textNode, tokenStart, tokenEnd, layerRect)
+              if (rect) {
+                rawRects.push(rect)
+                continue
+              }
+
               const tokenRange = document.createRange()
               try {
-                tokenRange.setStart(textNode, startOffset + match.index)
-                tokenRange.setEnd(textNode, startOffset + match.index + match[0].length)
+                tokenRange.setStart(textNode, tokenStart)
+                tokenRange.setEnd(textNode, tokenEnd)
               } catch {
                 continue
               }
@@ -3455,6 +3463,60 @@ function PdfCanvasViewer({
     }
 
     return mergeAdjacentRects(rawRects)
+  }
+
+  function measureTokenRect(textNode: Text, startOffset: number, endOffset: number, layerRect: DOMRect) {
+    const span = textNode.parentElement
+    const fullText = textNode.nodeValue ?? ''
+    if (!span || !fullText || endOffset <= startOffset) return null
+
+    const spanRect = span.getBoundingClientRect()
+    if (spanRect.width <= 0 || spanRect.height <= 0) return null
+
+    const metrics = getTextMeasureContext()
+    if (!metrics) return null
+
+    const style = window.getComputedStyle(span)
+    metrics.font = buildCanvasFont(style)
+
+    const prefix = fullText.slice(0, startOffset)
+    const token = fullText.slice(startOffset, endOffset)
+    const totalWidth = measureTextWidth(metrics, fullText, style)
+    const prefixWidth = measureTextWidth(metrics, prefix, style)
+    const tokenWidth = measureTextWidth(metrics, token, style)
+    if (totalWidth <= 0 || tokenWidth <= 0) return null
+
+    const scale = spanRect.width / totalWidth
+    const tokenLeft = spanRect.left + prefixWidth * scale
+    const tokenRight = Math.min(spanRect.right, tokenLeft + tokenWidth * scale)
+
+    return normalizeRect(
+      new DOMRect(tokenLeft, spanRect.top, Math.max(0, tokenRight - tokenLeft), spanRect.height),
+      layerRect,
+    )
+  }
+
+  function getTextMeasureContext() {
+    const canvas = document.createElement('canvas')
+    return canvas.getContext('2d')
+  }
+
+  function buildCanvasFont(style: CSSStyleDeclaration) {
+    const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : ''
+    const fontVariant = style.fontVariant && style.fontVariant !== 'normal' ? `${style.fontVariant} ` : ''
+    const fontWeight = style.fontWeight ? `${style.fontWeight} ` : ''
+    return `${fontStyle}${fontVariant}${fontWeight}${style.fontSize} ${style.fontFamily}`.trim()
+  }
+
+  function measureTextWidth(
+    context: CanvasRenderingContext2D,
+    text: string,
+    style: CSSStyleDeclaration,
+  ) {
+    if (!text) return 0
+    const letterSpacing = Number.parseFloat(style.letterSpacing)
+    const extraSpacing = Number.isFinite(letterSpacing) ? Math.max(0, text.length - 1) * letterSpacing : 0
+    return context.measureText(text).width + extraSpacing
   }
 
   function normalizeRect(clientRect: DOMRect, layerRect: DOMRect) {
