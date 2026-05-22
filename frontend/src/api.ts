@@ -140,6 +140,10 @@ export class ApiClient {
     })
   }
 
+  deletePlacement(placementId: string) {
+    return this.request<void>(`/api/taxonomy/placements/${placementId}`, { method: 'DELETE' })
+  }
+
   workspace() {
     return this.request<UserWorkspace>('/api/workspace')
   }
@@ -302,6 +306,14 @@ export class ApiClient {
 
   deleteBook(bookId: string) {
     return this.request<void>(`/api/books/${bookId}`, { method: 'DELETE' })
+  }
+
+  updateBook(bookId: string, payload: Partial<Omit<CommitBookPayload, 'temp_id'>>) {
+    return this.request<Book>(`/api/books/${bookId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
   }
 
   inspectBook(file: File) {

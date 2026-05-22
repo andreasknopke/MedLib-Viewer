@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, Fragment, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import {
   Activity,
   BookOpen,
@@ -18,6 +18,7 @@ import {
   Menu,
   Minimize2,
   Minus,
+  Pencil,
   Plus,
   Rows2,
   Search,
@@ -869,6 +870,9 @@ function BookManagementPanel({
   const [filter, setFilter] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<DraftMetadata>(emptyDraft())
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const filtered = books.filter((book) => {
     if (!filter.trim()) return true
@@ -892,6 +896,64 @@ function BookManagementPanel({
       setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen')
     } finally {
       setBusyId(null)
+    }
+  }
+
+  function startEdit(book: Book) {
+    setEditingId(book.id)
+    setError('')
+    setEditDraft({
+      title: book.title ?? '',
+      subtitle: book.subtitle ?? '',
+      authors: book.authors ?? '',
+      publisher: book.publisher ?? '',
+      isbn: book.isbn ?? '',
+      year: book.year != null ? String(book.year) : '',
+      edition: book.edition ?? '',
+      specialty: book.specialty ?? '',
+      media_type: book.media_type,
+      language: book.language ?? 'de',
+      tags: (book.tags ?? []).join(', '),
+      description: book.description ?? '',
+    })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditDraft(emptyDraft())
+  }
+
+  async function saveEdit(bookId: string) {
+    if (!editDraft.title.trim()) {
+      setError('Titel ist erforderlich')
+      return
+    }
+    setSavingEdit(true)
+    setError('')
+    try {
+      await api.updateBook(bookId, {
+        title: editDraft.title.trim(),
+        subtitle: editDraft.subtitle.trim() || null,
+        authors: editDraft.authors.trim() || null,
+        publisher: editDraft.publisher.trim() || null,
+        isbn: editDraft.isbn.trim() || null,
+        year: editDraft.year ? Number.parseInt(editDraft.year, 10) || null : null,
+        edition: editDraft.edition.trim() || null,
+        specialty: editDraft.specialty.trim() || null,
+        media_type: editDraft.media_type,
+        language: (editDraft.language || 'de').slice(0, 8),
+        tags: editDraft.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        description: editDraft.description.trim() || null,
+      })
+      await onChanged()
+      cancelEdit()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -929,23 +991,189 @@ function BookManagementPanel({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((book) => (
-                  <tr key={book.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 font-medium text-slate-900">{book.title}</td>
-                    <td className="px-3 py-2 text-slate-600">{book.authors ?? '–'}</td>
-                    <td className="px-3 py-2 text-slate-600">{book.specialty ?? '–'}</td>
-                    <td className="px-3 py-2 text-slate-600">{book.year ?? '–'}</td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        disabled={busyId === book.id}
-                        onClick={() => void handleDelete(book)}
-                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        {busyId === book.id ? 'Lösche…' : 'Löschen'}
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={book.id}>
+                    <tr className="hover:bg-slate-50">
+                      <td className="px-3 py-2 font-medium text-slate-900">{book.title}</td>
+                      <td className="px-3 py-2 text-slate-600">{book.authors ?? '–'}</td>
+                      <td className="px-3 py-2 text-slate-600">{book.specialty ?? '–'}</td>
+                      <td className="px-3 py-2 text-slate-600">{book.year ?? '–'}</td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={busyId === book.id || savingEdit}
+                            onClick={() => (editingId === book.id ? cancelEdit() : startEdit(book))}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            {editingId === book.id ? 'Abbrechen' : 'Bearbeiten'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === book.id || savingEdit}
+                            onClick={() => void handleDelete(book)}
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            {busyId === book.id ? 'Lösche…' : 'Löschen'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {editingId === book.id && (
+                      <tr key={`${book.id}-edit`} className="bg-indigo-50/30">
+                        <td colSpan={5} className="px-3 py-3">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <label className="text-[11px] text-slate-600">
+                              Titel *
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.title}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, title: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Untertitel
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.subtitle}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, subtitle: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Autor:innen
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.authors}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, authors: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Verlag
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.publisher}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, publisher: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              ISBN
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.isbn}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, isbn: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Jahr
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.year}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, year: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Auflage
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.edition}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, edition: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Fachgebiet
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.specialty}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, specialty: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Typ
+                              <select
+                                className="form-control mt-0.5"
+                                value={editDraft.media_type}
+                                onChange={(event) =>
+                                  setEditDraft({
+                                    ...editDraft,
+                                    media_type: event.target.value as DraftMetadata['media_type'],
+                                  })
+                                }
+                              >
+                                <option value="book">Buch</option>
+                                <option value="journal">Zeitschrift</option>
+                              </select>
+                            </label>
+                            <label className="text-[11px] text-slate-600">
+                              Sprache
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.language}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, language: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600 sm:col-span-2">
+                              Tags (kommagetrennt)
+                              <input
+                                className="form-control mt-0.5"
+                                value={editDraft.tags}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, tags: event.target.value })
+                                }
+                              />
+                            </label>
+                            <label className="text-[11px] text-slate-600 sm:col-span-2">
+                              Beschreibung
+                              <textarea
+                                className="form-control mt-0.5"
+                                rows={3}
+                                value={editDraft.description}
+                                onChange={(event) =>
+                                  setEditDraft({ ...editDraft, description: event.target.value })
+                                }
+                              />
+                            </label>
+                          </div>
+                          <div className="mt-3 flex justify-end gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              onClick={cancelEdit}
+                              disabled={savingEdit}
+                            >
+                              Abbrechen
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={() => void saveEdit(book.id)}
+                              disabled={savingEdit}
+                            >
+                              {savingEdit ? 'Speichere…' : 'Speichern'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -2497,18 +2725,155 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
           )}
         </div>
 
-        {placements.length > 0 && (
-          <div className="max-h-40 space-y-1 overflow-auto border-t border-slate-100 pt-3">
-            {placements.slice(0, 8).map((placement) => (
-              <p key={placement.id} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600">
-                {placement.clinic_name} / {placement.department_name}
-                {placement.category_name ? ` / ${placement.category_name}` : ''}
-              </p>
-            ))}
-          </div>
-        )}
+        <div className="border-t border-slate-100 pt-3">
+          <BookPlacementsOverview
+            books={books}
+            placements={placements}
+            onChanged={async () => {
+              await loadTaxonomy()
+              await onChanged()
+            }}
+          />
+        </div>
       </div>
     </section>
+  )
+}
+
+function BookPlacementsOverview({
+  books,
+  placements,
+  onChanged,
+}: {
+  books: Book[]
+  placements: Placement[]
+  onChanged: () => Promise<void>
+}) {
+  const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned'>('all')
+  const [search, setSearch] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const placementsByBook = useMemo(() => {
+    const map = new Map<string, Placement[]>()
+    for (const placement of placements) {
+      const list = map.get(placement.book_id) ?? []
+      list.push(placement)
+      map.set(placement.book_id, list)
+    }
+    return map
+  }, [placements])
+
+  const visibleBooks = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    return books.filter((book) => {
+      const hasPlacements = (placementsByBook.get(book.id)?.length ?? 0) > 0
+      if (filter === 'assigned' && !hasPlacements) return false
+      if (filter === 'unassigned' && hasPlacements) return false
+      if (!needle) return true
+      return (
+        book.title.toLowerCase().includes(needle) ||
+        (book.authors ?? '').toLowerCase().includes(needle)
+      )
+    })
+  }, [books, placementsByBook, filter, search])
+
+  const assignedCount = useMemo(
+    () => books.filter((book) => (placementsByBook.get(book.id)?.length ?? 0) > 0).length,
+    [books, placementsByBook],
+  )
+  const unassignedCount = books.length - assignedCount
+
+  async function removePlacement(placement: Placement) {
+    if (!confirm('Diese Zuordnung wirklich entfernen?')) return
+    setBusyId(placement.id)
+    try {
+      await api.deletePlacement(placement.id)
+      await onChanged()
+    } catch {
+      // surfaced via reload; keep UI quiet
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-slate-700">
+          Übersicht ({assignedCount} zugeordnet, {unassignedCount} ohne Zuordnung)
+        </p>
+        <div className="flex gap-1">
+          {(['all', 'assigned', 'unassigned'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`rounded-md border px-2 py-1 text-[11px] ${
+                filter === value
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {value === 'all' ? 'Alle' : value === 'assigned' ? 'Zugeordnet' : 'Nicht zugeordnet'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <input
+        className="form-control"
+        placeholder="Buch filtern…"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+      <div className="max-h-72 space-y-1.5 overflow-auto rounded-md border border-slate-200 bg-white p-2">
+        {visibleBooks.length === 0 ? (
+          <p className="muted px-2 py-1 text-[11px]">Keine Bücher in dieser Auswahl.</p>
+        ) : (
+          visibleBooks.map((book) => {
+            const bookPlacements = placementsByBook.get(book.id) ?? []
+            return (
+              <div key={book.id} className="rounded-md border border-slate-100 bg-slate-50/60 px-2.5 py-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] font-medium text-slate-800">{book.title}</p>
+                    {book.authors && (
+                      <p className="truncate text-[11px] text-slate-500">{book.authors}</p>
+                    )}
+                  </div>
+                  {bookPlacements.length === 0 && (
+                    <span className="badge badge-rose shrink-0">Nicht zugeordnet</span>
+                  )}
+                </div>
+                {bookPlacements.length > 0 && (
+                  <ul className="mt-1.5 space-y-1">
+                    {bookPlacements.map((placement) => (
+                      <li
+                        key={placement.id}
+                        className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[11px] text-slate-600"
+                      >
+                        <span className="truncate">
+                          {placement.clinic_name} / {placement.department_name}
+                          {placement.category_name ? ` / ${placement.category_name}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={busyId === placement.id}
+                          onClick={() => void removePlacement(placement)}
+                          className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Entfernen
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
   )
 }
 

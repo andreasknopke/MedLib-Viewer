@@ -204,6 +204,43 @@ def delete_book(
             pass
 
 
+class BookUpdate(BaseModel):
+    title: str | None = None
+    subtitle: str | None = None
+    authors: str | None = None
+    publisher: str | None = None
+    isbn: str | None = None
+    year: int | None = None
+    edition: str | None = None
+    specialty: str | None = None
+    media_type: MediaType | None = None
+    language: str | None = None
+    tags: list[str] | None = None
+    description: str | None = None
+    is_downloadable: bool | None = None
+
+
+@router.patch("/{book_id}", response_model=BookRead)
+def update_book(
+    book_id: UUID,
+    payload: BookUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(Role.admin, Role.librarian)),
+) -> Book:
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "title" in data and not (data["title"] or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title must not be empty")
+    for key, value in data.items():
+        setattr(book, key, value)
+    book.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(book)
+    return book
+
+
 # --------------------------------------------------------------------------- #
 # Auto-metadata: inspect → commit
 # --------------------------------------------------------------------------- #
