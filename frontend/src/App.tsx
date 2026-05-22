@@ -3414,7 +3414,6 @@ function Reader({
   const [layout, setLayout] = useState<PageLayout>('single')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
-  const [isSidebarHovered, setIsSidebarHovered] = useState(false)
   const [hasEmbeddedText, setHasEmbeddedText] = useState(false)
   const [matchTerm, setMatchTerm] = useState<string>(initialTerm ?? '')
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -3431,25 +3430,6 @@ function Reader({
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [highlights, setHighlights] = useState<Highlight[]>([])
   const [noteText, setNoteText] = useState('')
-  const sidebarHideTimerRef = useRef<number | null>(null)
-
-  function clearSidebarHideTimer() {
-    if (sidebarHideTimerRef.current !== null) {
-      window.clearTimeout(sidebarHideTimerRef.current)
-      sidebarHideTimerRef.current = null
-    }
-  }
-
-  function openSidebar() {
-    clearSidebarHideTimer()
-    setShowSidebar(true)
-  }
-
-  function closeSidebar() {
-    clearSidebarHideTimer()
-    setIsSidebarHovered(false)
-    setShowSidebar(false)
-  }
 
   useEffect(() => {
     let active = true
@@ -3532,24 +3512,13 @@ function Reader({
   }, [initialPage])
 
   useEffect(() => {
-    setMatchTerm(initialTerm ?? '')
-  }, [initialTerm])
+    setPendingHighlight(null)
+    setOcrRunning(false)
+  }, [book.id, pageNumber])
 
   useEffect(() => {
-    if (isFullscreen || !showSidebar || isSidebarHovered) {
-      clearSidebarHideTimer()
-      return
-    }
-
-    sidebarHideTimerRef.current = window.setTimeout(() => {
-      setShowSidebar(false)
-      sidebarHideTimerRef.current = null
-    }, 3000)
-
-    return () => clearSidebarHideTimer()
-  }, [isFullscreen, isSidebarHovered, pageNumber, showSidebar])
-
-  useEffect(() => clearSidebarHideTimer, [])
+    setMatchTerm(initialTerm ?? '')
+  }, [initialTerm])
 
   useEffect(() => {
     function onFsChange() {
@@ -3816,13 +3785,7 @@ function Reader({
             <button
               className="btn btn-sm btn-ghost"
               type="button"
-              onClick={() => {
-                if (showSidebar) {
-                  closeSidebar()
-                } else {
-                  openSidebar()
-                }
-              }}
+              onClick={() => setShowSidebar((value) => !value)}
               title={showSidebar ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
               aria-label={showSidebar ? 'Seitenleiste ausblenden' : 'Seitenleiste einblenden'}
             >
@@ -3879,16 +3842,7 @@ function Reader({
         </div>
 
         {showSidebar && !isFullscreen && (
-          <aside
-            className="reader-sidebar"
-            onMouseEnter={() => {
-              clearSidebarHideTimer()
-              setIsSidebarHovered(true)
-            }}
-            onMouseLeave={() => {
-              setIsSidebarHovered(false)
-            }}
-          >
+          <aside className="reader-sidebar">
             {!hasEmbeddedText && (
               <section>
                 <h4 className="mb-1.5 text-xs font-semibold text-slate-900">OCR-Text der aktuellen Seite</h4>
@@ -4121,7 +4075,6 @@ function PdfCanvasViewer({
     let cancelTextLayer = false
 
     setRendering(true)
-    onTextSelectRef.current(null)
     if (matchLayerRef.current) matchLayerRef.current.replaceChildren()
 
     void pdfDocument.getPage(pageNumber).then((page) => {
