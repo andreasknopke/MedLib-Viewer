@@ -16,6 +16,7 @@ export interface InspectMetadata {
   publisher?: string | null
   isbn?: string | null
   year?: number | null
+  edition?: string | null
   description?: string | null
   language?: string | null
 }

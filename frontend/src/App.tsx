@@ -1982,10 +1982,14 @@ function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
       setInspection(result)
       if (result.best) {
         applyCandidate(result.best)
+        const sourceMessages: Record<string, string> = {
+          googlebooks: 'Treffer bei Google Books gefunden – bitte prüfen.',
+          openlibrary: 'Treffer bei OpenLibrary gefunden – bitte prüfen.',
+          filename: 'Daten aus Dateiname übernommen – bitte ergänzen.',
+        }
         setInfo(
-          result.best.source === 'googlebooks'
-            ? 'Treffer bei Google Books gefunden – bitte prüfen.'
-            : 'Treffer bei OpenLibrary gefunden – bitte prüfen.',
+          sourceMessages[result.best.source ?? ''] ??
+            'Daten gefunden – bitte prüfen.',
         )
       } else {
         setInfo(
@@ -2010,6 +2014,7 @@ function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
       publisher: candidate.publisher ?? current.publisher,
       isbn: candidate.isbn ?? current.isbn,
       year: candidate.year != null ? String(candidate.year) : current.year,
+      edition: candidate.edition ?? current.edition,
       description: candidate.description ?? current.description,
       language: candidate.language ?? current.language,
     }))

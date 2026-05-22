@@ -217,6 +217,7 @@ class InspectMetadata(BaseModel):
     publisher: str | None = None
     isbn: str | None = None
     year: int | None = None
+    edition: str | None = None
     description: str | None = None
     language: str | None = None
 

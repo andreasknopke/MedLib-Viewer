@@ -28,13 +28,14 @@ HTTP_TIMEOUT = httpx.Timeout(3.5, connect=2.0)
 
 @dataclass
 class MetadataCandidate:
-    source: str  # "openlibrary" | "googlebooks"
+    source: str  # "openlibrary" | "googlebooks" | "filename"
     title: str | None = None
     subtitle: str | None = None
     authors: str | None = None
     publisher: str | None = None
     isbn: str | None = None
     year: int | None = None
+    edition: str | None = None
     description: str | None = None
     language: str | None = None
 
@@ -47,6 +48,7 @@ class MetadataCandidate:
             "publisher": self.publisher,
             "isbn": self.isbn,
             "year": self.year,
+            "edition": self.edition,
             "description": self.description,
             "language": self.language,
         }
@@ -286,6 +288,23 @@ class FilenameHints:
     authors: str | None = None
     publisher: str | None = None
     year: int | None = None
+    edition: str | None = None
+
+
+# Common LibGen-style publisher abbreviations seen in "[Abbr]" prefixes.
+_PUBLISHER_ABBREVIATIONS = {
+    "thie": "Thieme",
+    "sprin": "Springer",
+    "spri": "Springer",
+    "else": "Elsevier",
+    "elsev": "Elsevier",
+    "schat": "Schattauer",
+    "urban": "Urban & Fischer",
+    "wiley": "Wiley",
+    "haus": "Hogrefe",
+    "hogr": "Hogrefe",
+    "deg": "De Gruyter",
+}
 
 
 def parse_filename(filename: str | None) -> FilenameHints:
@@ -295,41 +314,77 @@ def parse_filename(filename: str | None) -> FilenameHints:
       "Author1, Author2 - Title-Publisher (Year).pdf"
       "Author - Title (Year).pdf"
       "Title - Publisher (Year).pdf"
+      "[Publisher] Author, Title (2. Aufl. 2013).pdf"  (LibGen DE)
+      "Author, Title (Year).pdf"
       "Title.pdf"
     """
     hints = FilenameHints()
     if not filename:
         return hints
     stem = Path(filename).stem
-    # Strip trailing " (Year)" and capture year.
-    year_match = re.search(r"\((\d{4})\)\s*$", stem)
-    if year_match:
-        hints.year = int(year_match.group(1))
-        stem = stem[: year_match.start()].rstrip(" -_")
+
+    # Trailing parenthetical: "(2. Aufl. 2013)", "(2013)", "(2nd ed. 2013)"
+    paren_match = re.search(r"\s*\(([^)]*)\)\s*$", stem)
+    if paren_match:
+        paren_text = paren_match.group(1)
+        year_in_paren = re.search(r"\b(?:19|20)\d{2}\b", paren_text)
+        if year_in_paren:
+            try:
+                hints.year = int(year_in_paren.group(0))
+            except ValueError:
+                pass
+        edition_match = re.search(
+            r"(\d+)\s*(?:st|nd|rd|th)?\s*\.?\s*(?:Aufl(?:age)?|ed(?:ition)?|Ed(?:ition)?)\b",
+            paren_text,
+        )
+        if edition_match:
+            hints.edition = edition_match.group(1)
+        if hints.year or hints.edition:
+            stem = stem[: paren_match.start()].rstrip(" -_")
+
+    # Leading "[Publisher]" tag (common on LibGen scans).
+    bracket_match = re.match(r"^\s*\[([^\]]+)\]\s*", stem)
+    if bracket_match:
+        publisher_hint = bracket_match.group(1).strip().rstrip(".")
+        hints.publisher = _PUBLISHER_ABBREVIATIONS.get(
+            publisher_hint.lower(), publisher_hint
+        )
+        stem = stem[bracket_match.end():]
+
     # Split on " - " (with surrounding spaces).
     parts = [p.strip() for p in re.split(r"\s+-\s+", stem) if p.strip()]
     if len(parts) >= 2:
         # First part: authors (comma-separated capitalised names).
         first = parts[0]
-        if "," in first or _looks_like_author(first):
+        if "," in first or _looks_like_surname_or_name(first):
             hints.authors = first
             remainder = parts[1:]
         else:
             remainder = parts
         # Title-Publisher merged via single hyphen (no spaces).
-        # If last remainder chunk has "Title-Publisher", split on last "-".
         if remainder:
             tail = remainder[-1]
             sub_match = re.match(r"^(.+?)-([A-Z][A-Za-z &.]+)$", tail)
             if sub_match and len(remainder) == 1 and hints.authors:
                 hints.title = sub_match.group(1).strip()
-                hints.publisher = sub_match.group(2).strip()
+                if not hints.publisher:
+                    hints.publisher = sub_match.group(2).strip()
             else:
                 hints.title = remainder[0].strip()
-                if len(remainder) >= 2:
+                if len(remainder) >= 2 and not hints.publisher:
                     hints.publisher = remainder[-1].strip()
-    elif parts:
-        hints.title = parts[0]
+    else:
+        # No " - " separator. Try first-comma split as "Author, Title".
+        comma_match = re.match(r"^([^,]+),\s+(.+)$", stem)
+        if (
+            comma_match
+            and not hints.authors
+            and _looks_like_surname_or_name(comma_match.group(1).strip())
+        ):
+            hints.authors = comma_match.group(1).strip()
+            hints.title = comma_match.group(2).strip()
+        elif stem:
+            hints.title = stem
     return hints
 
 
@@ -339,6 +394,18 @@ def _looks_like_author(text: str) -> bool:
     if not 2 <= len(words) <= 4:
         return False
     return all(w[:1].isupper() for w in words if w)
+
+
+def _looks_like_surname_or_name(text: str) -> bool:
+    """A single capitalised surname ("Breitenseher") or a 2-4 word name."""
+    if not text:
+        return False
+    if _looks_like_author(text):
+        return True
+    words = text.split()
+    if len(words) == 1:
+        return bool(re.fullmatch(r"[A-ZÄÖÜ][\wÄÖÜäöüß\.\-']{1,}", words[0]))
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -474,9 +541,28 @@ def lookup_metadata(cover_text: str, filename: str | None = None) -> LookupResul
                 authors=hints.authors,
                 publisher=hints.publisher,
                 year=hints.year,
+                edition=hints.edition,
                 isbn=isbn,
             )
         )
+
+    # Backfill the best candidate with filename hints whenever the online
+    # source left a field empty – the user explicitly wants ISBN/author/year
+    # populated even if only one source had them.
+    if unique:
+        top = unique[0]
+        if not top.authors and hints.authors:
+            top.authors = hints.authors
+        if not top.publisher and hints.publisher:
+            top.publisher = hints.publisher
+        if not top.year and hints.year:
+            top.year = hints.year
+        if not top.edition and hints.edition:
+            top.edition = hints.edition
+        if not top.isbn and isbn:
+            top.isbn = isbn
+        if not top.title and hints.title:
+            top.title = hints.title
 
     best = unique[0] if unique else None
     return LookupResult(
