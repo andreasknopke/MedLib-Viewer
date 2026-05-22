@@ -5,8 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Bookmark, Book, Note, SavedMedia, User
-from app.schemas import SavedMediaRead, UserBookmarkOverview, UserNoteOverview, UserWorkspaceRead
+from app.models import Bookmark, Book, Highlight, Note, SavedMedia, User
+from app.schemas import (
+    SavedMediaRead,
+    UserBookmarkOverview,
+    UserHighlightOverview,
+    UserNoteOverview,
+    UserWorkspaceRead,
+)
 from app.security import get_current_user
 
 router = APIRouter()
@@ -53,7 +59,29 @@ def my_workspace(db: Session = Depends(get_db), user: User = Depends(get_current
             .order_by(Note.created_at.desc())
         ).all()
     ]
-    return UserWorkspaceRead(saved_media=saved_media, bookmarks=bookmarks, notes=notes)
+    highlights = [
+        UserHighlightOverview(
+            id=highlight.id,
+            book_id=book.id,
+            book_title=book.title,
+            page_number=highlight.page_number,
+            selected_text=highlight.selected_text,
+            color=highlight.color,
+            created_at=highlight.created_at,
+        )
+        for highlight, book in db.execute(
+            select(Highlight, Book)
+            .join(Book, Book.id == Highlight.book_id)
+            .where(Highlight.user_id == user.id)
+            .order_by(Highlight.created_at.desc())
+        ).all()
+    ]
+    return UserWorkspaceRead(
+        saved_media=saved_media,
+        bookmarks=bookmarks,
+        notes=notes,
+        highlights=highlights,
+    )
 
 
 @router.post("/saved/{book_id}", response_model=SavedMediaRead, status_code=status.HTTP_201_CREATED)

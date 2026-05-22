@@ -69,3 +69,21 @@ def delete_highlight(highlight_id: UUID, db: Session = Depends(get_db), user: Us
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Highlight not found")
     db.delete(highlight)
     db.commit()
+
+
+@router.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_note(note_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    note = db.get(Note, note_id)
+    if not note or note.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+    db.delete(note)
+    db.commit()
+
+
+@router.delete("/bookmarks/{bookmark_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_bookmark(bookmark_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    bookmark = db.get(Bookmark, bookmark_id)
+    if not bookmark or bookmark.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bookmark not found")
+    db.delete(bookmark)
+    db.commit()

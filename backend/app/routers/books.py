@@ -185,6 +185,25 @@ async def upload_book(
     return book
 
 
+@router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_book(
+    book_id: UUID,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(Role.admin, Role.librarian)),
+) -> None:
+    book = db.get(Book, book_id)
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    storage_path = Path(book.storage_path) if book.storage_path else None
+    db.delete(book)
+    db.commit()
+    if storage_path and storage_path.exists():
+        try:
+            storage_path.unlink()
+        except OSError:
+            pass
+
+
 # --------------------------------------------------------------------------- #
 # Auto-metadata: inspect → commit
 # --------------------------------------------------------------------------- #

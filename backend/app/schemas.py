@@ -276,7 +276,18 @@ class UserNoteOverview(BaseModel):
     created_at: datetime
 
 
+class UserHighlightOverview(BaseModel):
+    id: UUID
+    book_id: UUID
+    book_title: str
+    page_number: int
+    selected_text: str
+    color: str
+    created_at: datetime
+
+
 class UserWorkspaceRead(BaseModel):
     saved_media: list[SavedMediaRead]
     bookmarks: list[UserBookmarkOverview]
     notes: list[UserNoteOverview]
+    highlights: list[UserHighlightOverview]
