@@ -4145,6 +4145,21 @@ function PdfCanvasViewer({
       const layerRect = layer.getBoundingClientRect()
       if (layerRect.width <= 0 || layerRect.height <= 0) return
 
+      const appendNormalizedBox = (
+        rect: { left: number; top: number; width: number; height: number },
+        title: string,
+      ) => {
+        if (rect.width <= 0 || rect.height <= 0) return
+        const box = document.createElement('div')
+        box.className = 'pdf-highlightBox'
+        box.title = title
+        box.style.left = `${rect.left * 100}%`
+        box.style.top = `${rect.top * 100}%`
+        box.style.width = `${rect.width * 100}%`
+        box.style.height = `${rect.height * 100}%`
+        highlightLayer.appendChild(box)
+      }
+
       const textNodes: { node: Text; start: number; end: number }[] = []
       const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
       let raw = ''
@@ -4171,15 +4186,37 @@ function PdfCanvasViewer({
       }
 
       for (const highlight of items) {
+        const locatorRects = highlight.locator?.rects?.filter(
+          (rect): rect is { left: number; top: number; width: number; height: number } =>
+            typeof rect?.left === 'number' &&
+            typeof rect?.top === 'number' &&
+            typeof rect?.width === 'number' &&
+            typeof rect?.height === 'number',
+        )
         const needle = collapseWhitespace(highlight.selected_text ?? '').toLowerCase()
-        if (!needle) continue
+        if (!needle) {
+          if (locatorRects?.length) {
+            for (const rect of locatorRects) appendNormalizedBox(rect, highlight.selected_text)
+          }
+          continue
+        }
         const idx = haystack.indexOf(needle)
-        if (idx < 0) continue
+        if (idx < 0) {
+          if (locatorRects?.length) {
+            for (const rect of locatorRects) appendNormalizedBox(rect, highlight.selected_text)
+          }
+          continue
+        }
         const rawStart = norm.map[idx]
         const rawEnd = norm.map[idx + needle.length - 1] + 1
         const startInfo = locate(rawStart)
         const endInfo = locate(rawEnd)
-        if (!startInfo || !endInfo) continue
+        if (!startInfo || !endInfo) {
+          if (locatorRects?.length) {
+            for (const rect of locatorRects) appendNormalizedBox(rect, highlight.selected_text)
+          }
+          continue
+        }
         const startIdx = textNodes.indexOf(startInfo.entry)
         const endIdx = textNodes.indexOf(endInfo.entry)
 
@@ -4206,34 +4243,23 @@ function PdfCanvasViewer({
             // ignore
           }
         }
-        if (!rawRects.length) continue
-
-        const heights = rawRects.map((r) => r.height).sort((a, b) => a - b)
-        const median = heights[Math.floor(heights.length / 2)] || 0
-        const tol = median * 0.6
-        const buckets: { top: number; bottom: number; left: number; right: number }[] = []
-        for (const r of [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left)) {
-          const center = r.top + r.height / 2
-          const target = buckets.find((b) => Math.abs((b.top + b.bottom) / 2 - center) <= tol)
-          if (target) {
-            target.top = Math.min(target.top, r.top)
-            target.bottom = Math.max(target.bottom, r.bottom)
-            target.left = Math.min(target.left, r.left)
-            target.right = Math.max(target.right, r.right)
-          } else {
-            buckets.push({ top: r.top, bottom: r.bottom, left: r.left, right: r.right })
+        if (!rawRects.length) {
+          if (locatorRects?.length) {
+            for (const rect of locatorRects) appendNormalizedBox(rect, highlight.selected_text)
           }
+          continue
         }
 
-        for (const b of buckets) {
-          const box = document.createElement('div')
-          box.className = 'pdf-highlightBox'
-          box.title = highlight.selected_text
-          box.style.left = `${((b.left - layerRect.left) / layerRect.width) * 100}%`
-          box.style.top = `${((b.top - layerRect.top) / layerRect.height) * 100}%`
-          box.style.width = `${((b.right - b.left) / layerRect.width) * 100}%`
-          box.style.height = `${((b.bottom - b.top) / layerRect.height) * 100}%`
-          highlightLayer.appendChild(box)
+        for (const b of mergeClientRects(rawRects)) {
+          appendNormalizedBox(
+            {
+              left: (b.left - layerRect.left) / layerRect.width,
+              top: (b.top - layerRect.top) / layerRect.height,
+              width: (b.right - b.left) / layerRect.width,
+              height: (b.bottom - b.top) / layerRect.height,
+            },
+            highlight.selected_text,
+          )
         }
       }
     })
@@ -4275,70 +4301,54 @@ function PdfCanvasViewer({
   }
 
   function collectSelectionRects(range: Range, layer: HTMLDivElement, layerRect: DOMRect) {
-    const rawRects: DOMRect[] = []
-    const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
-    let node = walker.nextNode()
-    while (node) {
-      const textNode = node as Text
-      const value = textNode.nodeValue ?? ''
-      let intersects = false
-      try {
-        intersects = range.intersectsNode(textNode)
-      } catch {
-        intersects = false
-      }
-      if (intersects && value) {
-        const startOffset = textNode === range.startContainer ? range.startOffset : 0
-        const endOffset = textNode === range.endContainer ? range.endOffset : value.length
-        if (endOffset > startOffset) {
-          const slice = value.slice(startOffset, endOffset)
-          const match = slice.match(/^(\s*)(.*?)(\s*)$/)
-          const leading = match ? match[1].length : 0
-          const trailing = match ? match[3].length : 0
-          const trimmedStart = startOffset + leading
-          const trimmedEnd = endOffset - trailing
-          if (trimmedEnd > trimmedStart) {
-            const subRange = document.createRange()
-            try {
-              subRange.setStart(textNode, trimmedStart)
-              subRange.setEnd(textNode, trimmedEnd)
-              for (const rect of Array.from(subRange.getClientRects())) {
-                if (rect.width > 0.5 && rect.height > 1) rawRects.push(rect)
+    const rawRects = Array.from(range.getClientRects())
+      .map((rect) => clipRectToLayer(rect, layerRect))
+      .filter((rect): rect is DOMRect => rect !== null && rect.width > 0.5 && rect.height > 1)
+
+    if (!rawRects.length) {
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+      let node = walker.nextNode()
+      while (node) {
+        const textNode = node as Text
+        const value = textNode.nodeValue ?? ''
+        let intersects = false
+        try {
+          intersects = range.intersectsNode(textNode)
+        } catch {
+          intersects = false
+        }
+        if (intersects && value) {
+          const startOffset = textNode === range.startContainer ? range.startOffset : 0
+          const endOffset = textNode === range.endContainer ? range.endOffset : value.length
+          if (endOffset > startOffset) {
+            const slice = value.slice(startOffset, endOffset)
+            const match = slice.match(/^(\s*)(.*?)(\s*)$/)
+            const leading = match ? match[1].length : 0
+            const trailing = match ? match[3].length : 0
+            const trimmedStart = startOffset + leading
+            const trimmedEnd = endOffset - trailing
+            if (trimmedEnd > trimmedStart) {
+              const subRange = document.createRange()
+              try {
+                subRange.setStart(textNode, trimmedStart)
+                subRange.setEnd(textNode, trimmedEnd)
+                for (const rect of Array.from(subRange.getClientRects())) {
+                  const clipped = clipRectToLayer(rect, layerRect)
+                  if (clipped && clipped.width > 0.5 && clipped.height > 1) rawRects.push(clipped)
+                }
+              } catch {
+                // ignore
               }
-            } catch {
-              // ignore
             }
           }
         }
+        node = walker.nextNode()
       }
-      node = walker.nextNode()
     }
     if (!rawRects.length) return []
 
-    const heights = rawRects.map((rect) => rect.height).sort((a, b) => a - b)
-    const medianHeight = heights[Math.floor(heights.length / 2)] || 0
-    const lineTolerance = medianHeight * 0.6
-
-    type LineBucket = { top: number; bottom: number; left: number; right: number }
-    const buckets: LineBucket[] = []
-    for (const rect of [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left)) {
-      const center = rect.top + rect.height / 2
-      const target = buckets.find((bucket) => {
-        const bucketCenter = (bucket.top + bucket.bottom) / 2
-        return Math.abs(bucketCenter - center) <= lineTolerance
-      })
-      if (target) {
-        target.top = Math.min(target.top, rect.top)
-        target.bottom = Math.max(target.bottom, rect.bottom)
-        target.left = Math.min(target.left, rect.left)
-        target.right = Math.max(target.right, rect.right)
-      } else {
-        buckets.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
-      }
-    }
-
     const result: Array<{ left: number; top: number; width: number; height: number }> = []
-    for (const bucket of buckets) {
+    for (const bucket of mergeClientRects(rawRects)) {
       const normalized = normalizeRect(
         new DOMRect(bucket.left, bucket.top, bucket.right - bucket.left, bucket.bottom - bucket.top),
         layerRect,
@@ -4358,6 +4368,67 @@ function PdfCanvasViewer({
     const height = bottom - top
     if (width <= 0 || height <= 0) return null
     return { left, top, width, height }
+  }
+
+  function clipRectToLayer(clientRect: DOMRect, layerRect: DOMRect) {
+    const left = Math.max(clientRect.left, layerRect.left)
+    const top = Math.max(clientRect.top, layerRect.top)
+    const right = Math.min(clientRect.right, layerRect.right)
+    const bottom = Math.min(clientRect.bottom, layerRect.bottom)
+    const width = right - left
+    const height = bottom - top
+    if (width <= 0 || height <= 0) return null
+    return new DOMRect(left, top, width, height)
+  }
+
+  function mergeClientRects(rawRects: DOMRect[]) {
+    if (!rawRects.length) return []
+
+    const heights = rawRects.map((rect) => rect.height).sort((a, b) => a - b)
+    const medianHeight = heights[Math.floor(heights.length / 2)] || 0
+    const lineTolerance = Math.max(1, medianHeight * 0.6)
+    const gapTolerance = Math.max(2, medianHeight * 0.75)
+
+    type Segment = { top: number; bottom: number; left: number; right: number }
+    type LineGroup = { top: number; bottom: number; segments: Segment[] }
+    const lines: LineGroup[] = []
+
+    for (const rect of [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left)) {
+      const center = rect.top + rect.height / 2
+      let line = lines.find((entry) => Math.abs((entry.top + entry.bottom) / 2 - center) <= lineTolerance)
+      if (!line) {
+        line = { top: rect.top, bottom: rect.bottom, segments: [] }
+        lines.push(line)
+      } else {
+        line.top = Math.min(line.top, rect.top)
+        line.bottom = Math.max(line.bottom, rect.bottom)
+      }
+
+      const overlapping = line.segments.filter(
+        (segment) => rect.left <= segment.right + gapTolerance && rect.right >= segment.left - gapTolerance,
+      )
+      if (!overlapping.length) {
+        line.segments.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
+        continue
+      }
+
+      const merged = overlapping.reduce<Segment>(
+        (segment, current) => ({
+          top: Math.min(segment.top, current.top),
+          bottom: Math.max(segment.bottom, current.bottom),
+          left: Math.min(segment.left, current.left),
+          right: Math.max(segment.right, current.right),
+        }),
+        { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+      )
+
+      line.segments = line.segments.filter((segment) => !overlapping.includes(segment))
+      line.segments.push(merged)
+    }
+
+    return lines
+      .sort((a, b) => a.top - b.top)
+      .flatMap((line) => line.segments.sort((a, b) => a.left - b.left))
   }
 
   const [areaRect, setAreaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
