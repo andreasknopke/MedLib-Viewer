@@ -26,6 +26,7 @@ import {
   Sparkles,
   Square,
   Star,
+  Trash2,
   Users,
   X,
 } from 'lucide-react'
@@ -55,7 +56,7 @@ GlobalWorkerOptions.workerPort = new Worker(new URL('pdfjs-dist/build/pdf.worker
   type: 'module',
 })
 
-type ViewKey = 'library' | 'search' | 'reader' | 'admin' | 'users'
+type ViewKey = 'dashboard' | 'library' | 'search' | 'reader' | 'admin' | 'users'
 
 interface TaxonomyData {
   clinics: Clinic[]
@@ -75,6 +76,7 @@ interface NavEntry {
 }
 
 const NAV_ITEMS: NavEntry[] = [
+  { key: 'dashboard', label: 'Dashboard', description: 'Merkliste, Highlights & Notizen', icon: LayoutDashboard },
   { key: 'library', label: 'Bibliothek', description: 'Bestand durchsuchen & lesen', icon: BookOpen },
   { key: 'search', label: 'Suche', description: 'Volltext mit Wildcards', icon: Search },
   { key: 'admin', label: 'Verwaltung', description: 'Uploads, OCR, Kennzahlen', icon: Settings, requires: ['admin', 'librarian'] },
@@ -241,6 +243,14 @@ function App() {
 
         <main className="app-content">
           <div className="mx-auto w-full max-w-screen-2xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
+            {view === 'dashboard' && (
+              <DashboardView
+                workspace={workspace}
+                onOpenBook={openBook}
+                onChanged={loadWorkspace}
+              />
+            )}
+
             {view === 'library' && (
               <LibraryView
                 books={books}
@@ -291,7 +301,6 @@ function App() {
 
             {view === 'admin' && canAdmin && (
               <AdminView
-                books={books}
                 dashboard={dashboard}
                 onRefreshDashboard={loadDashboard}
                 onChanged={async () => {
@@ -652,6 +661,296 @@ function WorkspaceSection({
             <p className="muted">Noch keine Notizen.</p>
           )}
         </div>
+      </div>
+    </section>
+  )
+}
+
+function DashboardView({
+  workspace,
+  onOpenBook,
+  onChanged,
+}: {
+  workspace: UserWorkspace | null
+  onOpenBook: (book: Book, pageNumber?: number, highlightTerm?: string) => void
+  onChanged: () => Promise<void>
+}) {
+  const savedMedia = workspace?.saved_media ?? []
+  const highlights = workspace?.highlights ?? []
+  const notes = workspace?.notes ?? []
+
+  function bookFromHighlight(highlightBookId: string): Book | null {
+    const saved = savedMedia.find((entry) => entry.book.id === highlightBookId)
+    return saved?.book ?? null
+  }
+
+  async function removeHighlight(id: string) {
+    if (!confirm('Highlight wirklich löschen?')) return
+    await api.deleteHighlight(id)
+    await onChanged()
+  }
+
+  async function removeNote(id: string) {
+    if (!confirm('Notiz wirklich löschen?')) return
+    await api.deleteNote(id)
+    await onChanged()
+  }
+
+  function openHighlight(highlight: { book_id: string; page_number: number; selected_text: string }) {
+    const book = bookFromHighlight(highlight.book_id)
+    if (!book) return
+    onOpenBook(book, highlight.page_number, highlight.selected_text)
+  }
+
+  function openNote(note: { book_id: string; page_number?: number | null }) {
+    const saved = savedMedia.find((entry) => entry.book.id === note.book_id)
+    if (!saved) return
+    onOpenBook(saved.book, note.page_number ?? undefined)
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="card">
+        <div className="card-header">
+          <h3 className="card-title flex items-center gap-2">
+            <Star className="h-4 w-4 text-indigo-600" /> Gemerkte Bücher
+          </h3>
+          <p className="card-description">Schneller Zugriff auf deine Merkliste</p>
+        </div>
+        <div className="card-body pt-3">
+          {savedMedia.length === 0 ? (
+            <p className="muted">Noch keine gemerkten Titel.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {savedMedia.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => onOpenBook(entry.book)}
+                  className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:shadow-sm"
+                >
+                  <BookCover book={entry.book} size="sm" />
+                  <span className="min-w-0">
+                    <span className="line-clamp-2 text-sm font-medium text-slate-900">{entry.book.title}</span>
+                    {entry.book.authors && (
+                      <span className="mt-0.5 line-clamp-1 block text-xs text-slate-500">{entry.book.authors}</span>
+                    )}
+                    <span className="mt-1 block text-[11px] text-slate-400">
+                      {entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}
+                      {entry.book.year ? ` · ${entry.book.year}` : ''}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <h3 className="card-title flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-500" /> Meine Highlights
+          </h3>
+          <p className="card-description">Markierte Textstellen verwalten</p>
+        </div>
+        <div className="card-body pt-3">
+          {highlights.length === 0 ? (
+            <p className="muted">Noch keine Highlights gesetzt.</p>
+          ) : (
+            <ul className="space-y-2">
+              {highlights.map((highlight) => {
+                const canOpen = bookFromHighlight(highlight.book_id) !== null
+                return (
+                  <li
+                    key={highlight.id}
+                    className="flex items-start gap-3 rounded-md border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <span
+                      className="mt-1 inline-block h-3 w-3 flex-shrink-0 rounded-sm"
+                      style={{ backgroundColor: highlight.color || '#facc15' }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-3 text-sm text-slate-800">{highlight.selected_text}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {highlight.book_title} · Seite {highlight.page_number}
+                      </p>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      {canOpen && (
+                        <button
+                          type="button"
+                          onClick={() => openHighlight(highlight)}
+                          className="btn btn-sm btn-secondary"
+                        >
+                          Öffnen
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void removeHighlight(highlight.id)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        title="Highlight löschen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <h3 className="card-title flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-indigo-600" /> Meine Notizen
+          </h3>
+          <p className="card-description">Eigene Anmerkungen nachlesen</p>
+        </div>
+        <div className="card-body pt-3">
+          {notes.length === 0 ? (
+            <p className="muted">Noch keine Notizen.</p>
+          ) : (
+            <ul className="space-y-2">
+              {notes.map((note) => {
+                const canOpen = savedMedia.some((entry) => entry.book.id === note.book_id)
+                return (
+                  <li
+                    key={note.id}
+                    className="flex items-start gap-3 rounded-md border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="whitespace-pre-wrap text-sm text-slate-800">{note.body}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {note.book_title}
+                        {note.page_number ? ` · Seite ${note.page_number}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      {canOpen && (
+                        <button
+                          type="button"
+                          onClick={() => openNote(note)}
+                          className="btn btn-sm btn-secondary"
+                        >
+                          Öffnen
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void removeNote(note.id)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        title="Notiz löschen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function BookManagementPanel({
+  books,
+  onChanged,
+}: {
+  books: Book[]
+  onChanged: () => Promise<void>
+}) {
+  const [filter, setFilter] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  const filtered = books.filter((book) => {
+    if (!filter.trim()) return true
+    const needle = filter.toLowerCase()
+    return (
+      book.title.toLowerCase().includes(needle) ||
+      (book.authors ?? '').toLowerCase().includes(needle) ||
+      (book.specialty ?? '').toLowerCase().includes(needle) ||
+      (book.isbn ?? '').toLowerCase().includes(needle)
+    )
+  })
+
+  async function handleDelete(book: Book) {
+    if (!confirm(`"${book.title}" wirklich aus der Datenbank löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return
+    setBusyId(book.id)
+    setError('')
+    try {
+      await api.deleteBook(book.id)
+      await onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="card-header">
+        <h3 className="card-title flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-indigo-600" /> Bücher verwalten
+        </h3>
+        <p className="card-description">{books.length} Titel in der Datenbank</p>
+      </div>
+      <div className="card-body space-y-3 pt-3">
+        <input
+          className="form-control"
+          placeholder="Filtern nach Titel, Autor, ISBN, Fachgebiet..."
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+        />
+        {error && (
+          <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
+        )}
+        {filtered.length === 0 ? (
+          <p className="muted">Keine Bücher gefunden.</p>
+        ) : (
+          <div className="max-h-[60vh] overflow-auto rounded-md border border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Titel</th>
+                  <th className="px-3 py-2">Autoren</th>
+                  <th className="px-3 py-2">Fachgebiet</th>
+                  <th className="px-3 py-2">Jahr</th>
+                  <th className="px-3 py-2 text-right">Aktion</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((book) => (
+                  <tr key={book.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 font-medium text-slate-900">{book.title}</td>
+                    <td className="px-3 py-2 text-slate-600">{book.authors ?? '–'}</td>
+                    <td className="px-3 py-2 text-slate-600">{book.specialty ?? '–'}</td>
+                    <td className="px-3 py-2 text-slate-600">{book.year ?? '–'}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        disabled={busyId === book.id}
+                        onClick={() => void handleDelete(book)}
+                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        {busyId === book.id ? 'Lösche…' : 'Löschen'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </section>
   )
@@ -1030,21 +1329,37 @@ function SearchResultCard({
 }
 
 function AdminView({
-  books,
   dashboard,
   onRefreshDashboard,
   onChanged,
 }: {
-  books: Book[]
   dashboard: DashboardOverview | null
   onRefreshDashboard: () => Promise<void>
   onChanged: () => Promise<void>
 }) {
-  type AdminTab = 'upload' | 'taxonomy' | 'metrics' | 'ocr'
+  type AdminTab = 'upload' | 'books' | 'taxonomy' | 'metrics' | 'ocr'
   const [tab, setTab] = useState<AdminTab>('upload')
+  const [allBooks, setAllBooks] = useState<Book[]>([])
+
+  async function reloadBooks() {
+    try {
+      setAllBooks(await api.books(''))
+    } catch {
+      setAllBooks([])
+    }
+  }
+
+  useEffect(() => {
+    void reloadBooks()
+  }, [])
+
+  async function refreshAll() {
+    await Promise.all([reloadBooks(), onChanged()])
+  }
 
   const tabs: { key: AdminTab; label: string; icon: typeof FileUp }[] = [
     { key: 'upload', label: 'Hochladen', icon: FileUp },
+    { key: 'books', label: 'Bücher', icon: BookOpen },
     { key: 'taxonomy', label: 'Einsortierung', icon: FolderTree },
     { key: 'metrics', label: 'Kennzahlen', icon: Gauge },
     { key: 'ocr', label: 'OCR-Pipeline', icon: Activity },
@@ -1072,8 +1387,9 @@ function AdminView({
         })}
       </div>
 
-      {tab === 'upload' && <UploadPanel onUploaded={onChanged} />}
-      {tab === 'taxonomy' && <TaxonomyPanel books={books} onChanged={onChanged} />}
+      {tab === 'upload' && <UploadPanel onUploaded={refreshAll} />}
+      {tab === 'books' && <BookManagementPanel books={allBooks} onChanged={refreshAll} />}
+      {tab === 'taxonomy' && <TaxonomyPanel books={allBooks} onChanged={refreshAll} />}
       {tab === 'metrics' && <MetricsPanel dashboard={dashboard} onRefresh={onRefreshDashboard} />}
       {tab === 'ocr' && <OcrPipelinePanel dashboard={dashboard} onRefresh={onRefreshDashboard} />}
     </div>

@@ -183,8 +183,19 @@ export interface WorkspaceNote {
   created_at: string
 }
 
+export interface WorkspaceHighlight {
+  id: string
+  book_id: string
+  book_title: string
+  page_number: number
+  selected_text: string
+  color: string
+  created_at: string
+}
+
 export interface UserWorkspace {
   saved_media: SavedMedia[]
   bookmarks: WorkspaceBookmark[]
   notes: WorkspaceNote[]
+  highlights: WorkspaceHighlight[]
 }

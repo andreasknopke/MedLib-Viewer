@@ -291,6 +291,18 @@ export class ApiClient {
     return this.request<void>(`/api/annotations/highlights/${highlightId}`, { method: 'DELETE' })
   }
 
+  deleteNote(noteId: string) {
+    return this.request<void>(`/api/annotations/notes/${noteId}`, { method: 'DELETE' })
+  }
+
+  deleteBookmark(bookmarkId: string) {
+    return this.request<void>(`/api/annotations/bookmarks/${bookmarkId}`, { method: 'DELETE' })
+  }
+
+  deleteBook(bookId: string) {
+    return this.request<void>(`/api/books/${bookId}`, { method: 'DELETE' })
+  }
+
   inspectBook(file: File) {
     const formData = new FormData()
     formData.append('file', file)
