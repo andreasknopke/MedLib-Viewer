@@ -3411,10 +3411,45 @@ function PdfCanvasViewer({
     })
   }
 
-  function collectSelectionRects(range: Range, _layer: HTMLDivElement, layerRect: DOMRect) {
-    const rawRects = Array.from(range.getClientRects()).filter(
-      (rect) => rect.width > 0.5 && rect.height > 1,
-    )
+  function collectSelectionRects(range: Range, layer: HTMLDivElement, layerRect: DOMRect) {
+    const rawRects: DOMRect[] = []
+    const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    while (node) {
+      const textNode = node as Text
+      const value = textNode.nodeValue ?? ''
+      let intersects = false
+      try {
+        intersects = range.intersectsNode(textNode)
+      } catch {
+        intersects = false
+      }
+      if (intersects && value) {
+        const startOffset = textNode === range.startContainer ? range.startOffset : 0
+        const endOffset = textNode === range.endContainer ? range.endOffset : value.length
+        if (endOffset > startOffset) {
+          const slice = value.slice(startOffset, endOffset)
+          const match = slice.match(/^(\s*)(.*?)(\s*)$/)
+          const leading = match ? match[1].length : 0
+          const trailing = match ? match[3].length : 0
+          const trimmedStart = startOffset + leading
+          const trimmedEnd = endOffset - trailing
+          if (trimmedEnd > trimmedStart) {
+            const subRange = document.createRange()
+            try {
+              subRange.setStart(textNode, trimmedStart)
+              subRange.setEnd(textNode, trimmedEnd)
+              for (const rect of Array.from(subRange.getClientRects())) {
+                if (rect.width > 0.5 && rect.height > 1) rawRects.push(rect)
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+      node = walker.nextNode()
+    }
     if (!rawRects.length) return []
 
     const heights = rawRects.map((rect) => rect.height).sort((a, b) => a - b)
