@@ -57,6 +57,10 @@ services:
       - coolify
     expose:
       - "80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.services.medlib-frontend.loadbalancer.server.port=80"
     depends_on:
       backend:
         condition: service_started
