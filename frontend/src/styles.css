@@ -440,6 +440,9 @@ button:disabled {
   position: relative;
   flex: 0 0 auto;
   overflow: hidden;
+  --scale-factor: 1;
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
 }
 
 .pdf-canvas {
@@ -469,13 +472,22 @@ button:disabled {
 
 /* pdf.js TextLayer (v4+): uses --scale-factor to size text exactly to canvas */
 .pdf-textLayer {
-  overflow: hidden;
+  position: absolute;
+  inset: 0;
+  overflow: clip;
   line-height: 1;
+  text-align: initial;
   z-index: 2;
   opacity: 1;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+  text-size-adjust: none;
   forced-color-adjust: none;
   transform-origin: 0 0;
-  caret-color: transparent;
+  caret-color: CanvasText;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
 }
 
 .pdf-textLayer :is(span, br) {
@@ -486,13 +498,26 @@ button:disabled {
   transform-origin: 0% 0%;
 }
 
+.pdf-textLayer > :not(.markedContent),
+.pdf-textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
 .pdf-textLayer span.markedContent {
-  top: 0;
-  height: 0;
+  display: contents;
 }
 
 .pdf-textLayer ::selection {
   background: rgba(96, 165, 250, 0.45);
+}
+
+.pdf-textLayer br::selection {
+  background: transparent;
 }
 
 .pdf-matchLayer {
