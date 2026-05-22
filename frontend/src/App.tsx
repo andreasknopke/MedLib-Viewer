@@ -3300,8 +3300,16 @@ function BookCover({ book, size = 'md' }: { book: Book; size?: CoverSize }) {
 
 /* ============================== Reader ============================== */
 
-type FitMode = 'width' | 'page' | 'height' | 'actual'
+type FitMode = 'width' | 'page' | 'height' | 'actual' | 'custom'
 type PageLayout = 'single' | 'double'
+
+const ACTUAL_SIZE_SCALE = 96 / 72
+const MIN_ZOOM = 0.4
+const MAX_ZOOM = 4
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))))
+}
 
 function Reader({
   book,
@@ -3325,6 +3333,7 @@ function Reader({
   const [pdfError, setPdfError] = useState('')
   const [zoom, setZoom] = useState(1)
   const [fitMode, setFitMode] = useState<FitMode>('actual')
+  const [renderScale, setRenderScale] = useState(ACTUAL_SIZE_SCALE)
   const [layout, setLayout] = useState<PageLayout>('single')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showSidebar, setShowSidebar] = useState(true)
@@ -3348,12 +3357,22 @@ function Reader({
   useEffect(() => {
     let active = true
     const sourceUrl = api.bookViewerUrl(book)
-    const loadingTask = getDocument(sourceUrl)
+    const loadingTask = getDocument({
+      url: sourceUrl,
+      // Asset folders are served by Vite (dev middleware) and copied to dist/pdfjs/ at build.
+      // Trailing slashes are required by pdf.js.
+      cMapUrl: '/pdfjs/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: '/pdfjs/standard_fonts/',
+      wasmUrl: '/pdfjs/wasm/',
+      iccUrl: '/pdfjs/iccs/',
+    })
 
     setPdfLoading(true)
     setPdfError('')
     setPdfDocument(null)
     setZoom(1)
+    setRenderScale(ACTUAL_SIZE_SCALE)
     setPendingHighlight(null)
 
     loadingTask.promise
@@ -3554,6 +3573,17 @@ function Reader({
     { mode: 'actual', label: '100 %', icon: Maximize2, title: 'Originalgröße' },
   ]
 
+  const effectiveZoom = renderScale / ACTUAL_SIZE_SCALE
+
+  function stepZoom(delta: number) {
+    if (fitMode === 'width' || fitMode === 'height' || fitMode === 'page') {
+      setFitMode('custom')
+      setZoom(clampZoom(effectiveZoom + delta))
+      return
+    }
+    setZoom((current) => clampZoom(current + delta))
+  }
+
   return (
     <section ref={containerRef} className={`reader-shell ${isFullscreen ? 'reader-fullscreen' : ''}`}>
       <div className="reader-toolbar">
@@ -3612,18 +3642,18 @@ function Reader({
             <button
               type="button"
               className="btn btn-sm btn-ghost"
-              onClick={() => setZoom((current) => Math.max(0.4, Number((current - 0.1).toFixed(2))))}
-              disabled={zoom <= 0.4}
+              onClick={() => stepZoom(-0.1)}
+              disabled={effectiveZoom <= MIN_ZOOM}
               title="Verkleinern"
             >
               <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="reader-zoom-label">{Math.round(zoom * 100)}%</span>
+            <span className="reader-zoom-label">{Math.round(effectiveZoom * 100)}%</span>
             <button
               type="button"
               className="btn btn-sm btn-ghost"
-              onClick={() => setZoom((current) => Math.min(4, Number((current + 0.1).toFixed(2))))}
-              disabled={zoom >= 4}
+              onClick={() => stepZoom(0.1)}
+              disabled={effectiveZoom >= MAX_ZOOM}
               title="Vergrößern"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -3699,6 +3729,7 @@ function Reader({
                 pageNumber={pageNumber}
                 zoom={zoom}
                 fitMode={fitMode}
+                onScaleChange={setRenderScale}
                 layout={layout}
                 highlights={currentPageHighlights}
                 matchTerm={matchTerm}
@@ -3712,6 +3743,7 @@ function Reader({
                   pageNumber={pageNumber + 1}
                   zoom={zoom}
                   fitMode={fitMode}
+                  onScaleChange={setRenderScale}
                   layout={layout}
                   highlights={secondPageHighlights}
                   matchTerm={matchTerm}
@@ -3885,6 +3917,7 @@ function PdfCanvasViewer({
   pageNumber,
   zoom,
   fitMode,
+  onScaleChange,
   layout,
   highlights,
   matchTerm,
@@ -3896,6 +3929,7 @@ function PdfCanvasViewer({
   pageNumber: number
   zoom: number
   fitMode: FitMode
+  onScaleChange: (scale: number) => void
   layout: PageLayout
   highlights: Highlight[]
   matchTerm?: string
@@ -3929,12 +3963,15 @@ function PdfCanvasViewer({
   useEffect(() => {
     const wrapper = wrapperRef.current
     if (!wrapper) return
-    // we resize to the parent .reader-viewport, which sets available area
-    const parent = wrapper.parentElement?.parentElement // .reader-viewport
-    const target = parent ?? wrapper
+    // Observe the fixed viewport area, not an ancestor whose size can be affected
+    // by the rendered page itself. Otherwise fit-mode can feed back into its own scale.
+    const viewport = wrapper.closest('.reader-viewport') as HTMLDivElement | null
+    const target = viewport ?? wrapper
 
     const update = () => {
-      setContainerSize({ width: target.clientWidth, height: target.clientHeight })
+      const width = target.clientWidth
+      const height = target.clientHeight
+      setContainerSize((current) => (current.width === width && current.height === height ? current : { width, height }))
     }
     update()
 
@@ -3971,11 +4008,12 @@ function PdfCanvasViewer({
       } else if (fitMode === 'page') {
         fitScale = Math.min(availableWidth / baseViewport.width, availableHeight / baseViewport.height)
       } else {
-        // actual size: 96 dpi (1 unit = 1px). The pdf default is 72dpi so scale ~= 96/72 to feel like print.
-        fitScale = 96 / 72
+        // actual/custom size: 96 dpi (1 unit = 1px). The pdf default is 72dpi so scale ~= 96/72 to feel like print.
+        fitScale = ACTUAL_SIZE_SCALE
       }
 
       const scale = Math.max(0.2, fitScale * zoom)
+      onScaleChange(scale)
       const viewport = page.getViewport({ scale })
       const pixelRatio = window.devicePixelRatio || 1
       const context = canvas.getContext('2d')
@@ -4035,7 +4073,7 @@ function PdfCanvasViewer({
       cancelTextLayer = true
       cancelRender?.()
     }
-  }, [containerSize.width, containerSize.height, fitMode, layout, pageNumber, pdfDocument, zoom])
+  }, [containerSize.width, containerSize.height, fitMode, layout, onScaleChange, pageNumber, pdfDocument, zoom])
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   function paintMatches() {
