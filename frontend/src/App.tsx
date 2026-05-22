@@ -3411,147 +3411,43 @@ function PdfCanvasViewer({
     })
   }
 
-  function collectSelectionRects(range: Range, layer: HTMLDivElement, layerRect: DOMRect) {
-    const rawRects: Array<{ left: number; top: number; width: number; height: number }> = []
-    const textNodes = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT)
-    let node = textNodes.nextNode()
+  function collectSelectionRects(range: Range, _layer: HTMLDivElement, layerRect: DOMRect) {
+    const rawRects = Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 0.5 && rect.height > 1,
+    )
+    if (!rawRects.length) return []
 
-    while (node) {
-      const textNode = node as Text
-      const value = textNode.nodeValue ?? ''
-      if (value) {
-        let intersects = false
-        try {
-          intersects = range.intersectsNode(textNode)
-        } catch {
-          intersects = false
-        }
+    const heights = rawRects.map((rect) => rect.height).sort((a, b) => a - b)
+    const medianHeight = heights[Math.floor(heights.length / 2)] || 0
+    const lineTolerance = medianHeight * 0.6
 
-        if (intersects) {
-          const startOffset = textNode === range.startContainer ? range.startOffset : 0
-          const endOffset = textNode === range.endContainer ? range.endOffset : value.length
-          if (endOffset > startOffset) {
-            const selectedText = value.slice(startOffset, endOffset)
-            const tokenPattern = /\S+/g
-            let match: RegExpExecArray | null
-            while ((match = tokenPattern.exec(selectedText)) !== null) {
-              const tokenStart = startOffset + match.index
-              const tokenEnd = tokenStart + match[0].length
-              const rect = measureTokenRect(textNode, tokenStart, tokenEnd, layerRect)
-              if (rect) {
-                rawRects.push(rect)
-                continue
-              }
-
-              const tokenRange = document.createRange()
-              try {
-                tokenRange.setStart(textNode, tokenStart)
-                tokenRange.setEnd(textNode, tokenEnd)
-              } catch {
-                continue
-              }
-
-              for (const clientRect of Array.from(tokenRange.getClientRects())) {
-                const normalized = normalizeRect(clientRect, layerRect)
-                if (normalized) rawRects.push(normalized)
-              }
-            }
-          }
-        }
+    type LineBucket = { top: number; bottom: number; left: number; right: number }
+    const buckets: LineBucket[] = []
+    for (const rect of [...rawRects].sort((a, b) => a.top - b.top || a.left - b.left)) {
+      const center = rect.top + rect.height / 2
+      const target = buckets.find((bucket) => {
+        const bucketCenter = (bucket.top + bucket.bottom) / 2
+        return Math.abs(bucketCenter - center) <= lineTolerance
+      })
+      if (target) {
+        target.top = Math.min(target.top, rect.top)
+        target.bottom = Math.max(target.bottom, rect.bottom)
+        target.left = Math.min(target.left, rect.left)
+        target.right = Math.max(target.right, rect.right)
+      } else {
+        buckets.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })
       }
-      node = textNodes.nextNode()
     }
 
-    return mergeAdjacentRects(rawRects)
-  }
-
-  function measureTokenRect(textNode: Text, startOffset: number, endOffset: number, layerRect: DOMRect) {
-    const span = textNode.parentElement
-    const fullText = textNode.nodeValue ?? ''
-    if (!span || !fullText || endOffset <= startOffset) return null
-
-    const spanRect = span.getBoundingClientRect()
-    if (spanRect.width <= 0 || spanRect.height <= 0) return null
-
-    const caretRect = measureTokenRectFromCarets(textNode, startOffset, endOffset, layerRect, spanRect)
-    if (caretRect) return caretRect
-
-    const metrics = getTextMeasureContext()
-    if (!metrics) return null
-
-    const style = window.getComputedStyle(span)
-    metrics.font = buildCanvasFont(style)
-
-    const prefix = fullText.slice(0, startOffset)
-    const token = fullText.slice(startOffset, endOffset)
-    const totalWidth = measureTextWidth(metrics, fullText, style)
-    const prefixWidth = measureTextWidth(metrics, prefix, style)
-    const tokenWidth = measureTextWidth(metrics, token, style)
-    if (totalWidth <= 0 || tokenWidth <= 0) return null
-
-    const scale = spanRect.width / totalWidth
-    const tokenLeft = spanRect.left + prefixWidth * scale
-    const tokenRight = Math.min(spanRect.right, tokenLeft + tokenWidth * scale)
-
-    return normalizeRect(
-      new DOMRect(tokenLeft, spanRect.top, Math.max(0, tokenRight - tokenLeft), spanRect.height),
-      layerRect,
-    )
-  }
-
-  function measureTokenRectFromCarets(
-    textNode: Text,
-    startOffset: number,
-    endOffset: number,
-    layerRect: DOMRect,
-    spanRect: DOMRect,
-  ) {
-    const startRange = document.createRange()
-    const endRange = document.createRange()
-    try {
-      startRange.setStart(textNode, startOffset)
-      startRange.setEnd(textNode, startOffset)
-      endRange.setStart(textNode, endOffset)
-      endRange.setEnd(textNode, endOffset)
-    } catch {
-      return null
+    const result: Array<{ left: number; top: number; width: number; height: number }> = []
+    for (const bucket of buckets) {
+      const normalized = normalizeRect(
+        new DOMRect(bucket.left, bucket.top, bucket.right - bucket.left, bucket.bottom - bucket.top),
+        layerRect,
+      )
+      if (normalized) result.push(normalized)
     }
-
-    const startRect = startRange.getBoundingClientRect()
-    const endRect = endRange.getBoundingClientRect()
-    const leftEdge = Number.isFinite(startRect.left) && startRect.width >= 0 ? startRect.left : spanRect.left
-    const rightEdge = Number.isFinite(endRect.left) && endRect.width >= 0 ? endRect.left : spanRect.right
-    const clampedLeft = Math.max(spanRect.left, Math.min(spanRect.right, leftEdge))
-    const clampedRight = Math.max(clampedLeft, Math.min(spanRect.right, rightEdge))
-    if (clampedRight - clampedLeft <= 0) return null
-
-    return normalizeRect(
-      new DOMRect(clampedLeft, spanRect.top, clampedRight - clampedLeft, spanRect.height),
-      layerRect,
-    )
-  }
-
-  function getTextMeasureContext() {
-    const canvas = document.createElement('canvas')
-    return canvas.getContext('2d')
-  }
-
-  function buildCanvasFont(style: CSSStyleDeclaration) {
-    const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : ''
-    const fontVariant = style.fontVariant && style.fontVariant !== 'normal' ? `${style.fontVariant} ` : ''
-    const fontWeight = style.fontWeight ? `${style.fontWeight} ` : ''
-    return `${fontStyle}${fontVariant}${fontWeight}${style.fontSize} ${style.fontFamily}`.trim()
-  }
-
-  function measureTextWidth(
-    context: CanvasRenderingContext2D,
-    text: string,
-    style: CSSStyleDeclaration,
-  ) {
-    if (!text) return 0
-    const letterSpacing = Number.parseFloat(style.letterSpacing)
-    const extraSpacing = Number.isFinite(letterSpacing) ? Math.max(0, text.length - 1) * letterSpacing : 0
-    return context.measureText(text).width + extraSpacing
+    return result
   }
 
   function normalizeRect(clientRect: DOMRect, layerRect: DOMRect) {
@@ -3564,46 +3460,6 @@ function PdfCanvasViewer({
     const height = bottom - top
     if (width <= 0 || height <= 0) return null
     return { left, top, width, height }
-  }
-
-  function mergeAdjacentRects(rects: Array<{ left: number; top: number; width: number; height: number }>) {
-    if (!rects.length) return rects
-    const sorted = [...rects].sort((a, b) => {
-      if (Math.abs(a.top - b.top) > 0.002) return a.top - b.top
-      return a.left - b.left
-    })
-
-    const merged: Array<{ left: number; top: number; width: number; height: number }> = []
-    for (const rect of sorted) {
-      const previous = merged[merged.length - 1]
-      if (!previous) {
-        merged.push(rect)
-        continue
-      }
-
-      const previousBottom = previous.top + previous.height
-      const rectBottom = rect.top + rect.height
-      const sameLine = Math.abs(previous.top - rect.top) <= Math.max(previous.height, rect.height) * 0.35
-        && Math.abs(previousBottom - rectBottom) <= Math.max(previous.height, rect.height) * 0.45
-      const horizontalGap = rect.left - (previous.left + previous.width)
-
-      if (sameLine && horizontalGap <= Math.max(previous.height, rect.height) * 0.8) {
-        const nextRight = Math.max(previous.left + previous.width, rect.left + rect.width)
-        previous.left = Math.min(previous.left, rect.left)
-        previous.top = Math.min(previous.top, rect.top)
-        previous.height = Math.max(previousBottom, rectBottom) - previous.top
-        previous.width = nextRight - previous.left
-      } else {
-        merged.push(rect)
-      }
-    }
-
-    return merged.map((rect) => ({
-      left: Math.max(0, Math.min(1, rect.left)),
-      top: Math.max(0, Math.min(1, rect.top)),
-      width: Math.max(0, Math.min(1 - rect.left, rect.width)),
-      height: Math.max(0, Math.min(1 - rect.top, rect.height)),
-    }))
   }
 
   const [areaRect, setAreaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
