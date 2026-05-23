@@ -51,6 +51,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        BUILD_COMMIT: ${SOURCE_COMMIT:-unknown}
     restart: unless-stopped
     networks:
       - medlib-net
@@ -78,5 +80,5 @@ networks:
     external: true
 
 volumes:
-  medlib-postgres-data:
-  medlib-books-data:
+  medlib-postgres-data: {}
+  medlib-books-data: {}
