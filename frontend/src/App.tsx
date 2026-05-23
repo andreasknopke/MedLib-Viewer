@@ -2651,7 +2651,7 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
   }, [])
 
   const filteredDepartments = departments.filter((department) => !selectedClinic || department.clinic_id === selectedClinic)
-  const filteredCategories = categories.filter((category) => !selectedDepartment || category.department_id === selectedDepartment)
+  const filteredCategories = categories.filter((category) => !selectedDepartment || !category.department_id || category.department_id === selectedDepartment)
 
   async function addClinic() {
     if (!clinicName.trim()) return
@@ -2668,8 +2668,8 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
   }
 
   async function addCategory() {
-    if (!selectedDepartment || !categoryName.trim()) return
-    await api.createCategory(selectedDepartment, categoryName.trim())
+    if (!categoryName.trim()) return
+    await api.createCategory(selectedDepartment || undefined, categoryName.trim())
     setCategoryName('')
     await loadTaxonomy()
   }
@@ -2804,6 +2804,9 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
           <BookPlacementsOverview
             books={books}
             placements={placements}
+            clinics={clinics}
+            departments={departments}
+            categories={categories}
             onChanged={async () => {
               await loadTaxonomy()
               await onChanged()
@@ -2818,15 +2821,25 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
 function BookPlacementsOverview({
   books,
   placements,
+  clinics,
+  departments,
+  categories,
   onChanged,
 }: {
   books: Book[]
   placements: Placement[]
+  clinics: Clinic[]
+  departments: Department[]
+  categories: Category[]
   onChanged: () => Promise<void>
 }) {
   const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned'>('all')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editClinic, setEditClinic] = useState('')
+  const [editDepartment, setEditDepartment] = useState('')
+  const [editCategory, setEditCategory] = useState('')
 
   const placementsByBook = useMemo(() => {
     const map = new Map<string, Placement[]>()
@@ -2870,6 +2883,41 @@ function BookPlacementsOverview({
       setBusyId(null)
     }
   }
+
+  function startEdit(placement: Placement) {
+    setEditingId(placement.id)
+    setEditClinic(placement.clinic_id ?? '')
+    setEditDepartment(placement.department_id ?? '')
+    setEditCategory(placement.category_id ?? '')
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditClinic('')
+    setEditDepartment('')
+    setEditCategory('')
+  }
+
+  async function saveEdit(placement: Placement) {
+    if (!editClinic || !editDepartment) return
+    setBusyId(placement.id)
+    try {
+      await api.updatePlacement(placement.id, {
+        clinic_id: editClinic,
+        department_id: editDepartment,
+        category_id: editCategory || null,
+      })
+      setEditingId(null)
+      await onChanged()
+    } catch {
+      // surfaced via reload
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const editDepartments = departments.filter((d) => !editClinic || d.clinic_id === editClinic)
+  const editCategories = categories.filter((c) => !editDepartment || !c.department_id || c.department_id === editDepartment)
 
   return (
     <div className="space-y-2">
@@ -2924,21 +2972,93 @@ function BookPlacementsOverview({
                     {bookPlacements.map((placement) => (
                       <li
                         key={placement.id}
-                        className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[11px] text-slate-600"
+                        className="rounded bg-white px-2 py-1 text-[11px] text-slate-600"
                       >
-                        <span className="truncate">
-                          {placement.clinic_name} / {placement.department_name}
-                          {placement.category_name ? ` / ${placement.category_name}` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={busyId === placement.id}
-                          onClick={() => void removePlacement(placement)}
-                          className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          Entfernen
-                        </button>
+                        {editingId === placement.id ? (
+                          <div className="space-y-1">
+                            <select
+                              className="form-control text-[11px] py-0.5"
+                              value={editClinic}
+                              onChange={(e) => {
+                                setEditClinic(e.target.value)
+                                setEditDepartment('')
+                                setEditCategory('')
+                              }}
+                            >
+                              <option value="">Klinik wählen</option>
+                              {clinics.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="form-control text-[11px] py-0.5"
+                              value={editDepartment}
+                              onChange={(e) => {
+                                setEditDepartment(e.target.value)
+                                setEditCategory('')
+                              }}
+                            >
+                              <option value="">Fachbereich wählen</option>
+                              {editDepartments.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="form-control text-[11px] py-0.5"
+                              value={editCategory}
+                              onChange={(e) => setEditCategory(e.target.value)}
+                            >
+                              <option value="">Typ optional</option>
+                              {editCategories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="flex gap-1 pt-0.5">
+                              <button
+                                type="button"
+                                disabled={busyId === placement.id}
+                                onClick={() => void saveEdit(placement)}
+                                className="btn btn-xs btn-primary"
+                              >
+                                Speichern
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="btn btn-xs btn-secondary"
+                              >
+                                Abbrechen
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(placement)}
+                              className="truncate text-left hover:text-indigo-600"
+                              title="Klicken zum Bearbeiten"
+                            >
+                              {placement.clinic_name} / {placement.department_name}
+                              {placement.category_name ? ` / ${placement.category_name}` : ''}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busyId === placement.id}
+                              onClick={() => void removePlacement(placement)}
+                              className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Entfernen
+                            </button>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>

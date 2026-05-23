@@ -218,7 +218,7 @@ class DepartmentRead(DepartmentCreate):
 
 
 class CategoryCreate(BaseModel):
-    department_id: UUID
+    department_id: UUID | None = None
     name: str
     description: str | None = None
 
@@ -249,13 +249,10 @@ class PlacementRead(PlacementCreate):
         from_attributes = True
 
 
-class SavedMediaRead(BaseModel):
-    id: UUID
-    book: BookRead
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+class PlacementUpdate(BaseModel):
+    clinic_id: UUID | None = None
+    department_id: UUID | None = None
+    category_id: UUID | None = None
 
 
 class UserBookmarkOverview(BaseModel):

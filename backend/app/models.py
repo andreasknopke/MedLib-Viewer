@@ -98,12 +98,12 @@ class Category(Base):
     __table_args__ = (UniqueConstraint("department_id", "name", name="uq_category_department_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    department_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("departments.id", ondelete="CASCADE"), index=True)
+    department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="CASCADE"), index=True, nullable=True)
     name: Mapped[str] = mapped_column(String(240), index=True)
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    department: Mapped[Department] = relationship(back_populates="categories")
+    department: Mapped["Department" | None] = relationship(back_populates="categories")
 
 
 class MediaPlacement(Base):

@@ -26,14 +26,24 @@ app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"]
 
 @app.on_event("startup")
 def startup() -> None:
-    # 1) Ensure all tables exist (idempotent – safe to run every time)
+    # 1) Run Alembic migrations automatically on deploy
     try:
-        from app.database import Base, engine
-        print("[medlib] Creating database tables …")
-        Base.metadata.create_all(bind=engine)
-        print("[medlib] Database tables ready.")
+        from alembic.config import Config as AlembicConfig
+        from alembic import command
+        print("[medlib] Running database migrations …")
+        alembic_cfg = AlembicConfig("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        print("[medlib] Database migrations completed.")
     except Exception as exc:
-        print(f"[medlib] create_all failed: {exc}")
+        print(f"[medlib] Alembic migration failed: {exc}")
+        # Fallback: ensure tables exist for dev environments
+        try:
+            from app.database import Base, engine
+            print("[medlib] Falling back to create_all …")
+            Base.metadata.create_all(bind=engine)
+            print("[medlib] Database tables ready (create_all).")
+        except Exception as fallback_exc:
+            print(f"[medlib] create_all also failed: {fallback_exc}")
 
     # 2) Create root admin if configured
     try:

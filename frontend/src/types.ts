@@ -143,7 +143,7 @@ export interface Department {
 
 export interface Category {
   id: string
-  department_id: string
+  department_id?: string | null
   name: string
   description?: string | null
 }
