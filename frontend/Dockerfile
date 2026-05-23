@@ -1,9 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install
 COPY . .
-RUN npm run build
+RUN npm install && npm run build
 
 FROM nginx:1.27-alpine
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
