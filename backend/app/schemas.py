@@ -283,6 +283,15 @@ class UserHighlightOverview(BaseModel):
     created_at: datetime
 
 
+class SavedMediaRead(BaseModel):
+    id: UUID
+    book: BookRead
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class UserWorkspaceRead(BaseModel):
     saved_media: list[SavedMediaRead]
     bookmarks: list[UserBookmarkOverview]
