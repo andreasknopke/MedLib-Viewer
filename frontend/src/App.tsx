@@ -60,6 +60,13 @@ GlobalWorkerOptions.workerPort = new Worker(new URL('pdfjs-dist/build/pdf.worker
 
 type ViewKey = 'dashboard' | 'library' | 'search' | 'reader' | 'admin' | 'users'
 
+interface AdminBookEditTarget {
+  bookId: string
+  nonce: number
+}
+
+type AdminTab = 'upload' | 'books' | 'taxonomy' | 'metrics' | 'ocr'
+
 interface TaxonomyData {
   clinics: Clinic[]
   departments: Department[]
@@ -113,6 +120,7 @@ function App() {
   const [isDesktopSidebar, setIsDesktopSidebar] = useState(false)
   const sidebarHideTimerRef = useRef<number | null>(null)
   const [readerReturnView, setReaderReturnView] = useState<ViewKey>('library')
+  const [adminBookEditTarget, setAdminBookEditTarget] = useState<AdminBookEditTarget | null>(null)
 
   async function hydrateAuthenticatedApp(nextUser: User) {
     setUser(nextUser)
@@ -258,6 +266,14 @@ function App() {
     setView('reader')
   }
 
+  function openAdminBookEditor(book: Book) {
+    setAdminBookEditTarget({ bookId: book.id, nonce: Date.now() })
+    setSelectedBook(null)
+    setReaderInitialPage(undefined)
+    setReaderInitialTerm('')
+    setView('admin')
+  }
+
   async function openBookById(bookId: string, pageNumber?: number, highlightTerm?: string) {
     const cachedBook =
       selectedBook?.id === bookId
@@ -372,12 +388,14 @@ function App() {
                 query={searchQuery}
                 initialPage={readerInitialPage}
                 initialTerm={readerInitialTerm}
+                canEditBook={canAdmin}
                 onBack={() => {
                   setSelectedBook(null)
                   setReaderInitialPage(undefined)
                   setReaderInitialTerm('')
                   setView(readerReturnView)
                 }}
+                onEditBook={() => openAdminBookEditor(selectedBook)}
                 onSave={saveToWorkspace}
                 onWorkspaceChanged={loadWorkspace}
               />
@@ -386,6 +404,8 @@ function App() {
             {view === 'admin' && canAdmin && (
               <AdminView
                 dashboard={dashboard}
+                initialTab={adminBookEditTarget ? 'books' : 'upload'}
+                editTarget={adminBookEditTarget}
                 onRefreshDashboard={loadDashboard}
                 onChanged={async () => {
                   await Promise.all([loadBooks(), loadDashboard(), loadTaxonomy()])
@@ -948,9 +968,11 @@ function DashboardView({
 
 function BookManagementPanel({
   books,
+  editTarget,
   onChanged,
 }: {
   books: Book[]
+  editTarget?: AdminBookEditTarget | null
   onChanged: () => Promise<void>
 }) {
   const [filter, setFilter] = useState('')
@@ -1008,6 +1030,14 @@ function BookManagementPanel({
     setEditingId(null)
     setEditDraft(emptyDraft())
   }
+
+  useEffect(() => {
+    if (!editTarget) return
+    const targetBook = books.find((book) => book.id === editTarget.bookId)
+    if (!targetBook) return
+    setFilter(targetBook.title)
+    startEdit(targetBook)
+  }, [editTarget, books])
 
   async function saveEdit(bookId: string) {
     if (!editDraft.title.trim()) {
@@ -1648,15 +1678,18 @@ function SearchResultCard({
 
 function AdminView({
   dashboard,
+  initialTab = 'upload',
+  editTarget,
   onRefreshDashboard,
   onChanged,
 }: {
   dashboard: DashboardOverview | null
+  initialTab?: AdminTab
+  editTarget?: AdminBookEditTarget | null
   onRefreshDashboard: () => Promise<void>
   onChanged: () => Promise<void>
 }) {
-  type AdminTab = 'upload' | 'books' | 'taxonomy' | 'metrics' | 'ocr'
-  const [tab, setTab] = useState<AdminTab>('upload')
+  const [tab, setTab] = useState<AdminTab>(initialTab)
   const [allBooks, setAllBooks] = useState<Book[]>([])
 
   async function reloadBooks() {
@@ -1670,6 +1703,10 @@ function AdminView({
   useEffect(() => {
     void reloadBooks()
   }, [])
+
+  useEffect(() => {
+    if (editTarget) setTab('books')
+  }, [editTarget])
 
   async function refreshAll() {
     await Promise.all([reloadBooks(), onChanged()])
@@ -1706,7 +1743,7 @@ function AdminView({
       </div>
 
       {tab === 'upload' && <UploadPanel onUploaded={refreshAll} />}
-      {tab === 'books' && <BookManagementPanel books={allBooks} onChanged={refreshAll} />}
+      {tab === 'books' && <BookManagementPanel books={allBooks} editTarget={editTarget} onChanged={refreshAll} />}
       {tab === 'taxonomy' && <TaxonomyPanel books={allBooks} onChanged={refreshAll} />}
       {tab === 'metrics' && <MetricsPanel dashboard={dashboard} onRefresh={onRefreshDashboard} />}
       {tab === 'ocr' && <OcrPipelinePanel dashboard={dashboard} onRefresh={onRefreshDashboard} />}
@@ -3409,7 +3446,9 @@ function Reader({
   query,
   initialPage,
   initialTerm,
+  canEditBook,
   onBack,
+  onEditBook,
   onSave,
   onWorkspaceChanged,
 }: {
@@ -3417,7 +3456,9 @@ function Reader({
   query: string
   initialPage?: number
   initialTerm?: string
+  canEditBook: boolean
   onBack: () => void
+  onEditBook: () => void
   onSave: (book: Book) => Promise<void>
   onWorkspaceChanged: () => Promise<void>
 }) {
@@ -3794,6 +3835,16 @@ function Reader({
           </div>
 
           <div className="reader-toolbar-group" role="group" aria-label="Werkzeuge">
+            {canEditBook && (
+              <button
+                className="btn btn-sm btn-ghost"
+                type="button"
+                onClick={onEditBook}
+                title="Dieses Buch in der Verwaltung bearbeiten"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button className="btn btn-sm btn-ghost" type="button" onClick={() => onSave(book)} title="Merken">
               <Star className="h-3.5 w-3.5" />
             </button>
