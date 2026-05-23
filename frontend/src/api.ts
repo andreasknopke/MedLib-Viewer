@@ -41,7 +41,7 @@ export interface CommitBookPayload {
   year?: number | null
   edition?: string | null
   specialty?: string | null
-  media_type?: 'book' | 'journal'
+  media_type?: 'book' | 'journal' | 'article'
   language?: string
   tags?: string[]
   description?: string | null
@@ -120,11 +120,11 @@ export class ApiClient {
     return this.request<Category[]>(`/api/taxonomy/categories${departmentId ? `?department_id=${departmentId}` : ''}`)
   }
 
-  createCategory(departmentId: string | undefined, name: string, description?: string) {
+  createCategory(departmentId: string, name: string, description?: string) {
     return this.request<Category>('/api/taxonomy/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ department_id: departmentId || null, name, description })
+      body: JSON.stringify({ department_id: departmentId, name, description })
     })
   }
 
@@ -135,14 +135,6 @@ export class ApiClient {
   createPlacement(payload: { book_id: string; clinic_id: string; department_id: string; category_id?: string | null }) {
     return this.request<Placement>('/api/taxonomy/placements', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-  }
-
-  updatePlacement(placementId: string, payload: { clinic_id?: string; department_id?: string; category_id?: string | null }) {
-    return this.request<Placement>(`/api/taxonomy/placements/${placementId}`, {
-      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })

@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'librarian' | 'clinician' | 'reader'
-export type MediaType = 'book' | 'journal'
+export type MediaType = 'book' | 'journal' | 'article'
 
 export interface User {
   id: string
@@ -143,7 +143,7 @@ export interface Department {
 
 export interface Category {
   id: string
-  department_id?: string | null
+  department_id: string
   name: string
   description?: string | null
 }

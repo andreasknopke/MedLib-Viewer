@@ -39,6 +39,7 @@ import type {
   Bookmark,
   Category,
   Clinic,
+  MediaType,
   DashboardJob,
   DashboardMetric,
   DashboardOverview,
@@ -83,6 +84,16 @@ const NAV_ITEMS: NavEntry[] = [
   { key: 'admin', label: 'Verwaltung', description: 'Uploads, OCR, Kennzahlen', icon: Settings, requires: ['admin', 'librarian'] },
   { key: 'users', label: 'Benutzer', description: 'Mein Zugang & Verwaltung', icon: Users },
 ]
+
+const MEDIA_TYPE_OPTIONS: Array<{ value: MediaType; label: string }> = [
+  { value: 'book', label: 'Buch' },
+  { value: 'journal', label: 'Fachzeitschrift' },
+  { value: 'article', label: 'Artikel' },
+]
+
+function mediaTypeLabel(mediaType: MediaType) {
+  return MEDIA_TYPE_OPTIONS.find((option) => option.value === mediaType)?.label ?? 'Buch'
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -708,7 +719,7 @@ function WorkspaceSection({
                   <span className="min-w-0">
                     <span className="line-clamp-2 font-medium text-slate-900">{entry.book.title}</span>
                     <span className="block text-[11px] text-slate-500">
-                      {entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}
+                      {mediaTypeLabel(entry.book.media_type)}
                     </span>
                   </span>
                 </button>
@@ -818,7 +829,7 @@ function DashboardView({
                       <span className="mt-0.5 line-clamp-1 block text-xs text-slate-500">{entry.book.authors}</span>
                     )}
                     <span className="mt-1 block text-[11px] text-slate-400">
-                      {entry.book.media_type === 'journal' ? 'Zeitschrift' : 'Buch'}
+                      {mediaTypeLabel(entry.book.media_type)}
                       {entry.book.year ? ` · ${entry.book.year}` : ''}
                     </span>
                   </span>
@@ -1191,8 +1202,11 @@ function BookManagementPanel({
                                   })
                                 }
                               >
-                                <option value="book">Buch</option>
-                                <option value="journal">Zeitschrift</option>
+                                {MEDIA_TYPE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
                               </select>
                             </label>
                             <label className="text-[11px] text-slate-600">
@@ -1276,7 +1290,7 @@ function LibraryView({
   onSaveBook: (book: Book) => Promise<void>
   workspace: UserWorkspace | null
 }) {
-  const [mediaFilter, setMediaFilter] = useState<'all' | 'book' | 'journal'>('all')
+  const [mediaFilter, setMediaFilter] = useState<'all' | MediaType>('all')
   const [sortBy, setSortBy] = useState<'recent' | 'title' | 'year' | 'specialty'>('recent')
 
   const filtered = useMemo(() => {
@@ -1320,13 +1334,14 @@ function LibraryView({
                 {[
                   ['all', 'Alle'],
                   ['book', 'Bücher'],
-                  ['journal', 'Zeitschriften'],
+                  ['journal', 'Fachzeitschriften'],
+                  ['article', 'Artikel'],
                 ].map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
                     className={`tab ${mediaFilter === value ? 'tab-active' : ''}`}
-                    onClick={() => setMediaFilter(value as 'all' | 'book' | 'journal')}
+                    onClick={() => setMediaFilter(value as 'all' | MediaType)}
                   >
                     {label}
                   </button>
@@ -1825,7 +1840,7 @@ function BookTile({
           {book.year ? ` · ${book.year}` : ''}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
-          <span className="badge badge-slate">{book.media_type === 'journal' ? 'Journal' : 'Buch'}</span>
+          <span className="badge badge-slate">{mediaTypeLabel(book.media_type)}</span>
           {book.specialty && <span className="badge badge-indigo">{book.specialty}</span>}
         </div>
         {onSave && (
@@ -2525,11 +2540,14 @@ function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> }) {
                   className="form-control"
                   value={draft.media_type}
                   onChange={(event) =>
-                    setDraft({ ...draft, media_type: event.target.value as 'book' | 'journal' })
+                    setDraft({ ...draft, media_type: event.target.value as MediaType })
                   }
                 >
-                  <option value="book">Buch</option>
-                  <option value="journal">Zeitschrift</option>
+                  {MEDIA_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -2596,7 +2614,7 @@ interface DraftMetadata {
   year: string
   edition: string
   specialty: string
-  media_type: 'book' | 'journal'
+  media_type: MediaType
   language: string
   tags: string
   description: string
@@ -2651,7 +2669,7 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
   }, [])
 
   const filteredDepartments = departments.filter((department) => !selectedClinic || department.clinic_id === selectedClinic)
-  const filteredCategories = categories.filter((category) => !selectedDepartment || !category.department_id || category.department_id === selectedDepartment)
+  const filteredCategories = categories.filter((category) => !selectedDepartment || category.department_id === selectedDepartment)
 
   async function addClinic() {
     if (!clinicName.trim()) return
@@ -2668,8 +2686,8 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
   }
 
   async function addCategory() {
-    if (!categoryName.trim()) return
-    await api.createCategory(selectedDepartment || undefined, categoryName.trim())
+    if (!selectedDepartment || !categoryName.trim()) return
+    await api.createCategory(selectedDepartment, categoryName.trim())
     setCategoryName('')
     await loadTaxonomy()
   }
@@ -2783,7 +2801,7 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
             value={selectedBook}
             onChange={(event) => setSelectedBook(event.target.value)}
           >
-            <option value="">Buch / Zeitschrift wählen</option>
+            <option value="">Medium wählen</option>
             {books.map((book) => (
               <option key={book.id} value={book.id}>
                 {book.title}
@@ -2804,9 +2822,6 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
           <BookPlacementsOverview
             books={books}
             placements={placements}
-            clinics={clinics}
-            departments={departments}
-            categories={categories}
             onChanged={async () => {
               await loadTaxonomy()
               await onChanged()
@@ -2821,25 +2836,15 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
 function BookPlacementsOverview({
   books,
   placements,
-  clinics,
-  departments,
-  categories,
   onChanged,
 }: {
   books: Book[]
   placements: Placement[]
-  clinics: Clinic[]
-  departments: Department[]
-  categories: Category[]
   onChanged: () => Promise<void>
 }) {
   const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned'>('all')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editClinic, setEditClinic] = useState('')
-  const [editDepartment, setEditDepartment] = useState('')
-  const [editCategory, setEditCategory] = useState('')
 
   const placementsByBook = useMemo(() => {
     const map = new Map<string, Placement[]>()
@@ -2883,41 +2888,6 @@ function BookPlacementsOverview({
       setBusyId(null)
     }
   }
-
-  function startEdit(placement: Placement) {
-    setEditingId(placement.id)
-    setEditClinic(placement.clinic_id ?? '')
-    setEditDepartment(placement.department_id ?? '')
-    setEditCategory(placement.category_id ?? '')
-  }
-
-  function cancelEdit() {
-    setEditingId(null)
-    setEditClinic('')
-    setEditDepartment('')
-    setEditCategory('')
-  }
-
-  async function saveEdit(placement: Placement) {
-    if (!editClinic || !editDepartment) return
-    setBusyId(placement.id)
-    try {
-      await api.updatePlacement(placement.id, {
-        clinic_id: editClinic,
-        department_id: editDepartment,
-        category_id: editCategory || null,
-      })
-      setEditingId(null)
-      await onChanged()
-    } catch {
-      // surfaced via reload
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  const editDepartments = departments.filter((d) => !editClinic || d.clinic_id === editClinic)
-  const editCategories = categories.filter((c) => !editDepartment || !c.department_id || c.department_id === editDepartment)
 
   return (
     <div className="space-y-2">
@@ -2972,93 +2942,21 @@ function BookPlacementsOverview({
                     {bookPlacements.map((placement) => (
                       <li
                         key={placement.id}
-                        className="rounded bg-white px-2 py-1 text-[11px] text-slate-600"
+                        className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[11px] text-slate-600"
                       >
-                        {editingId === placement.id ? (
-                          <div className="space-y-1">
-                            <select
-                              className="form-control text-[11px] py-0.5"
-                              value={editClinic}
-                              onChange={(e) => {
-                                setEditClinic(e.target.value)
-                                setEditDepartment('')
-                                setEditCategory('')
-                              }}
-                            >
-                              <option value="">Klinik wählen</option>
-                              {clinics.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              className="form-control text-[11px] py-0.5"
-                              value={editDepartment}
-                              onChange={(e) => {
-                                setEditDepartment(e.target.value)
-                                setEditCategory('')
-                              }}
-                            >
-                              <option value="">Fachbereich wählen</option>
-                              {editDepartments.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.name}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              className="form-control text-[11px] py-0.5"
-                              value={editCategory}
-                              onChange={(e) => setEditCategory(e.target.value)}
-                            >
-                              <option value="">Typ optional</option>
-                              {editCategories.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
-                            <div className="flex gap-1 pt-0.5">
-                              <button
-                                type="button"
-                                disabled={busyId === placement.id}
-                                onClick={() => void saveEdit(placement)}
-                                className="btn btn-xs btn-primary"
-                              >
-                                Speichern
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEdit}
-                                className="btn btn-xs btn-secondary"
-                              >
-                                Abbrechen
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(placement)}
-                              className="truncate text-left hover:text-indigo-600"
-                              title="Klicken zum Bearbeiten"
-                            >
-                              {placement.clinic_name} / {placement.department_name}
-                              {placement.category_name ? ` / ${placement.category_name}` : ''}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busyId === placement.id}
-                              onClick={() => void removePlacement(placement)}
-                              className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Entfernen
-                            </button>
-                          </div>
-                        )}
+                        <span className="truncate">
+                          {placement.clinic_name} / {placement.department_name}
+                          {placement.category_name ? ` / ${placement.category_name}` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={busyId === placement.id}
+                          onClick={() => void removePlacement(placement)}
+                          className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Entfernen
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -3484,7 +3382,7 @@ function BookCover({ book, size = 'md' }: { book: Book; size?: CoverSize }) {
       <p className={`${titleSize} line-clamp-3 font-semibold leading-tight text-white`}>{shortTitle(book.title, shortLen)}</p>
       {showMeta && (
         <p className="line-clamp-1 text-[8px] font-medium uppercase tracking-wide text-white/80">
-          {book.specialty || (book.media_type === 'journal' ? 'Journal' : 'Buch')}
+          {book.specialty || mediaTypeLabel(book.media_type)}
         </p>
       )}
     </div>

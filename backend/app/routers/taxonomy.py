@@ -15,7 +15,6 @@ from app.schemas import (
     DepartmentRead,
     PlacementCreate,
     PlacementRead,
-    PlacementUpdate,
 )
 from app.security import get_current_user, require_roles
 
@@ -115,7 +114,7 @@ def list_categories(
 ) -> list[Category]:
     statement = select(Category).order_by(Category.name.asc())
     if department_id:
-        statement = statement.where((Category.department_id == department_id) | (Category.department_id.is_(None)))
+        statement = statement.where(Category.department_id == department_id)
     return list(db.scalars(statement))
 
 
@@ -125,7 +124,7 @@ def create_category(
     _: User = Depends(require_roles(Role.admin, Role.librarian)),
     db: Session = Depends(get_db),
 ) -> Category:
-    if payload.department_id and not db.get(Department, payload.department_id):
+    if not db.get(Department, payload.department_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
     category = Category(**payload.model_dump())
     db.add(category)
@@ -166,7 +165,7 @@ def create_placement(
     db: Session = Depends(get_db),
 ) -> PlacementRead:
     if not db.get(Book, payload.book_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book or journal not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medium not found")
     department = db.get(Department, payload.department_id)
     if not db.get(Clinic, payload.clinic_id) or not department:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic or department not found")
@@ -174,52 +173,10 @@ def create_placement(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department does not belong to clinic")
     if payload.category_id:
         category = db.get(Category, payload.category_id)
-        if not category:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category not found")
-        if category.department_id is not None and category.department_id != payload.department_id:
+        if not category or category.department_id != payload.department_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category does not belong to department")
     placement = MediaPlacement(**payload.model_dump())
     db.add(placement)
-    db.commit()
-    db.refresh(placement)
-    return placement_to_read(placement)
-
-
-@router.patch("/placements/{placement_id}", response_model=PlacementRead)
-def update_placement(
-    placement_id: UUID,
-    payload: PlacementUpdate,
-    _: User = Depends(require_roles(Role.admin, Role.librarian)),
-    db: Session = Depends(get_db),
-) -> PlacementRead:
-    placement = db.get(MediaPlacement, placement_id)
-    if not placement:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Placement not found")
-
-    if payload.clinic_id is not None:
-        if not db.get(Clinic, payload.clinic_id):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
-        placement.clinic_id = payload.clinic_id
-
-    if payload.department_id is not None:
-        department = db.get(Department, payload.department_id)
-        if not department:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
-        if payload.clinic_id is not None and department.clinic_id != payload.clinic_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department does not belong to clinic")
-        placement.department_id = payload.department_id
-
-    if payload.category_id is not None:
-        if payload.category_id == "":
-            placement.category_id = None
-        else:
-            category = db.get(Category, payload.category_id)
-            if not category:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category not found")
-            if category.department_id is not None and category.department_id != placement.department_id:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category does not belong to department")
-            placement.category_id = payload.category_id
-
     db.commit()
     db.refresh(placement)
     return placement_to_read(placement)
