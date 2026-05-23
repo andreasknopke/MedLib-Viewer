@@ -218,7 +218,7 @@ class DepartmentRead(DepartmentCreate):
 
 
 class CategoryCreate(BaseModel):
-    department_id: UUID | None = None
+    department_id: UUID
     name: str
     description: str | None = None
 
@@ -255,6 +255,15 @@ class PlacementUpdate(BaseModel):
     category_id: UUID | None = None
 
 
+class SavedMediaRead(BaseModel):
+    id: UUID
+    book: BookRead
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class UserBookmarkOverview(BaseModel):
     id: UUID
     book_id: UUID
@@ -281,15 +290,6 @@ class UserHighlightOverview(BaseModel):
     selected_text: str
     color: str
     created_at: datetime
-
-
-class SavedMediaRead(BaseModel):
-    id: UUID
-    book: BookRead
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class UserWorkspaceRead(BaseModel):

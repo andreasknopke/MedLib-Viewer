@@ -140,6 +140,14 @@ export class ApiClient {
     })
   }
 
+  updatePlacement(placementId: string, payload: { clinic_id?: string; department_id?: string; category_id?: string | null }) {
+    return this.request<Placement>(`/api/taxonomy/placements/${placementId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+  }
+
   deletePlacement(placementId: string) {
     return this.request<void>(`/api/taxonomy/placements/${placementId}`, { method: 'DELETE' })
   }

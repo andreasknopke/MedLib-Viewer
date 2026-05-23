@@ -2859,6 +2859,9 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
           <BookPlacementsOverview
             books={books}
             placements={placements}
+            clinics={clinics}
+            departments={departments}
+            categories={categories}
             onChanged={async () => {
               await loadTaxonomy()
               await onChanged()
@@ -2873,15 +2876,25 @@ function TaxonomyPanel({ books, onChanged }: { books: Book[]; onChanged: () => P
 function BookPlacementsOverview({
   books,
   placements,
+  clinics,
+  departments,
+  categories,
   onChanged,
 }: {
   books: Book[]
   placements: Placement[]
+  clinics: Clinic[]
+  departments: Department[]
+  categories: Category[]
   onChanged: () => Promise<void>
 }) {
   const [filter, setFilter] = useState<'all' | 'assigned' | 'unassigned'>('all')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editClinic, setEditClinic] = useState('')
+  const [editDepartment, setEditDepartment] = useState('')
+  const [editCategory, setEditCategory] = useState('')
 
   const placementsByBook = useMemo(() => {
     const map = new Map<string, Placement[]>()
@@ -2925,6 +2938,40 @@ function BookPlacementsOverview({
       setBusyId(null)
     }
   }
+
+  function startEdit(placement: Placement) {
+    setEditingId(placement.id)
+    setEditClinic(placement.clinic_id ?? '')
+    setEditDepartment(placement.department_id ?? '')
+    setEditCategory(placement.category_id ?? '')
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditClinic('')
+    setEditDepartment('')
+    setEditCategory('')
+  }
+
+  async function saveEdit(placement: Placement) {
+    if (!editClinic || !editDepartment) return
+    setBusyId(placement.id)
+    try {
+      await api.updatePlacement(placement.id, {
+        clinic_id: editClinic,
+        department_id: editDepartment,
+        category_id: editCategory || null,
+      })
+      setEditingId(null)
+      await onChanged()
+    } catch {
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const editDepartments = departments.filter((department) => !editClinic || department.clinic_id === editClinic)
+  const editCategories = categories.filter((category) => !editDepartment || category.department_id === editDepartment)
 
   return (
     <div className="space-y-2">
@@ -2979,21 +3026,94 @@ function BookPlacementsOverview({
                     {bookPlacements.map((placement) => (
                       <li
                         key={placement.id}
-                        className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1 text-[11px] text-slate-600"
+                        className="rounded bg-white px-2 py-1 text-[11px] text-slate-600"
                       >
-                        <span className="truncate">
-                          {placement.clinic_name} / {placement.department_name}
-                          {placement.category_name ? ` / ${placement.category_name}` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={busyId === placement.id}
-                          onClick={() => void removePlacement(placement)}
-                          className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          Entfernen
-                        </button>
+                        {editingId === placement.id ? (
+                          <div className="space-y-1">
+                            <select
+                              className="form-control py-0.5 text-[11px]"
+                              value={editClinic}
+                              onChange={(event) => {
+                                setEditClinic(event.target.value)
+                                setEditDepartment('')
+                                setEditCategory('')
+                              }}
+                            >
+                              <option value="">Klinik wählen</option>
+                              {clinics.map((clinic) => (
+                                <option key={clinic.id} value={clinic.id}>
+                                  {clinic.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="form-control py-0.5 text-[11px]"
+                              value={editDepartment}
+                              onChange={(event) => {
+                                setEditDepartment(event.target.value)
+                                setEditCategory('')
+                              }}
+                            >
+                              <option value="">Fachbereich wählen</option>
+                              {editDepartments.map((department) => (
+                                <option key={department.id} value={department.id}>
+                                  {department.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="form-control py-0.5 text-[11px]"
+                              value={editCategory}
+                              onChange={(event) => setEditCategory(event.target.value)}
+                            >
+                              <option value="">Kategorie optional</option>
+                              {editCategories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="flex gap-1 pt-0.5">
+                              <button
+                                type="button"
+                                disabled={busyId === placement.id}
+                                onClick={() => void saveEdit(placement)}
+                                className="btn btn-xs btn-primary"
+                              >
+                                Speichern
+                              </button>
+                              <button type="button" onClick={cancelEdit} className="btn btn-xs btn-secondary">
+                                Abbrechen
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              {placement.clinic_name} / {placement.department_name}
+                              {placement.category_name ? ` / ${placement.category_name}` : ''}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(placement)}
+                                className="inline-flex items-center gap-1 rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-indigo-600 hover:bg-indigo-50"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                Neu zuordnen
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyId === placement.id}
+                                onClick={() => void removePlacement(placement)}
+                                className="inline-flex items-center gap-1 rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Entfernen
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>

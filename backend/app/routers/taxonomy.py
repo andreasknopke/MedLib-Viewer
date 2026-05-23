@@ -15,6 +15,7 @@ from app.schemas import (
     DepartmentRead,
     PlacementCreate,
     PlacementRead,
+    PlacementUpdate,
 )
 from app.security import get_current_user, require_roles
 
@@ -177,6 +178,43 @@ def create_placement(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category does not belong to department")
     placement = MediaPlacement(**payload.model_dump())
     db.add(placement)
+    db.commit()
+    db.refresh(placement)
+    return placement_to_read(placement)
+
+
+@router.patch("/placements/{placement_id}", response_model=PlacementRead)
+def update_placement(
+    placement_id: UUID,
+    payload: PlacementUpdate,
+    _: User = Depends(require_roles(Role.admin, Role.librarian)),
+    db: Session = Depends(get_db),
+) -> PlacementRead:
+    placement = db.get(MediaPlacement, placement_id)
+    if not placement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Placement not found")
+
+    next_clinic_id = payload.clinic_id or placement.clinic_id
+    next_department_id = payload.department_id or placement.department_id
+    next_category_id = payload.category_id if payload.category_id is not None else placement.category_id
+
+    if not db.get(Clinic, next_clinic_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
+
+    department = db.get(Department, next_department_id)
+    if not department:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+    if department.clinic_id != next_clinic_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department does not belong to clinic")
+
+    if next_category_id:
+        category = db.get(Category, next_category_id)
+        if not category or category.department_id != next_department_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category does not belong to department")
+
+    placement.clinic_id = next_clinic_id
+    placement.department_id = next_department_id
+    placement.category_id = next_category_id
     db.commit()
     db.refresh(placement)
     return placement_to_read(placement)
