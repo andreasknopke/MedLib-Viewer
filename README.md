@@ -1,6 +1,6 @@
 # MedLib Klinikbibliothek
 
-![CI](https://github.com/andreasknopke/MedLib-Viewer/actions/workflows/ci.yml/badge.svg)
+
 
 MedLib ist ein eigenständiges Open-Source-Websystem zur Organisation, OCR-Erfassung und Volltextsuche großer PDF-Bestände medizinischer Fachbücher. Die Produktidee ist deutlich von Dokumentenmanagementsystemen wie Paperless-ngx und modernen medizinischen Fachportalen inspiriert, übernimmt aber keinen Code aus Paperless-ngx.
 
