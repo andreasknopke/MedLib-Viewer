@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 import enum
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -105,7 +104,7 @@ class Category(Base):
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    department: Mapped["Department" | None] = relationship(back_populates="categories")
+    department: Mapped[Optional["Department"]] = relationship(back_populates="categories")
 
 
 class MediaPlacement(Base):
